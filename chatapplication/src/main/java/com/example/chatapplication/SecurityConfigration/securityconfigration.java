@@ -36,7 +36,7 @@ public class securityconfigration {
                         .requestMatchers("/", "/login.html", "/sign_up.html", "/loginpage", "/siginpage",
                                 "/homepage.html", "/forgetpassword", "/send-otp", "/verify-otp", "/setpassword",
                                 "/forgetpassword.html", "/verify-otp.html", "/setpassword.html",
-                                "/*.css", "/*.js", "/error", "/ws/**")
+                                "/*.css", "/*.js", "/error", "/ws/**", "/logout")
                         .permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

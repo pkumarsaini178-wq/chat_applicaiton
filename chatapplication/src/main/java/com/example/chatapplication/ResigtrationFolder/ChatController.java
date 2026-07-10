@@ -421,4 +421,14 @@ public class ChatController {
         result.put("status", "online");
         return result;
     }
+
+    @PostMapping("/logout")
+    public org.springframework.http.ResponseEntity<Void> logoutUser(HttpServletResponse response) {
+        Cookie cookie = new Cookie("jwt", "");
+        cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
+        return org.springframework.http.ResponseEntity.ok().build();
+    }
 }
