@@ -1,21 +1,46 @@
+databases:
+  # 1. PostgreSQL Database
+  - name: chat-db
+    plan: free # Can be upgraded to starter/standard
+    ipAllowList: [] # Allow all IPs
+
 services:
+  # 2. Spring Boot Web Service (via Docker)
   - type: web
-    name: chatapplication
+    name: chat-backend
     env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
     envVars:
-      - key: SPRING_PROFILES_ACTIVE
-        value: render
-      - key: DB_URL
-        sync: false
+      - key: DB_HOST
+        fromDatabase:
+          name: chat-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: chat-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: chat-db
+          property: database
       - key: DB_USERNAME
-        sync: false
+        fromDatabase:
+          name: chat-db
+          property: user
       - key: DB_PASSWORD
-        sync: false
+        fromDatabase:
+          name: chat-db
+          property: password
+      - key: MAIL_USERNAME
+        sync: false # Set this manually in the Render Dashboard
+      - key: MAIL_PASSWORD
+        sync: false # Set this manually in the Render Dashboard
+      - key: SENDGRID_API_KEY
+        sync: false # Set this manually in the Render Dashboard
+      - key: MAIL_FROM
+        sync: false # Set this manually in the Render Dashboard (your verified SendGrid sender email)
       - key: JWT_SECRET
-        generateValue: true
+        generateValue: true # Render will automatically generate a strong secret
       - key: CHAT_ENCRYPTION_KEY
         generateValue: true
-      - key: MAIL_USERNAME
-        sync: false
-      - key: MAIL_PASSWORD
-        sync: false
