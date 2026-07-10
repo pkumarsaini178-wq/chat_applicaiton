@@ -1,10 +1,7 @@
 services:
   - type: web
     name: chatapplication
-    env: java
-    rootDir: chatapplication
-    buildCommand: ./mvnw clean package -DskipTests
-    startCommand: java -Dserver.port=$PORT $JAVA_OPTS -jar target/chatapplication-0.0.1-SNAPSHOT.jar
+    env: docker
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: render
