@@ -80,6 +80,13 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- Spring Boot Developer Tools for Fast Reload -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-devtools</artifactId>
+			<optional>true</optional>
+		</dependency>
+
 		<!-- Test -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -270,10 +270,6 @@
             <div class="tabs-container">
                 <button onclick="showTab('users')" id="btnTabUsers" class="tab-btn active">All Users</button>
                 <button onclick="showTab('friends')" id="btnTabFriends" class="tab-btn">Friends</button>
-                <button onclick="window.location.href='notifications.html'" id="btnTabNotifs" class="tab-btn" style="position: relative; display: none;">
-                    🔔
-                    <span id="mobileNotifBadge" style="background:var(--danger); color:white; border-radius:50%; padding:0; width:16px; height:16px; font-size:10px; position:absolute; top:2px; right:20%; line-height:16px; text-align:center; font-weight:700; display:none;">0</span>
-                </button>
             </div>
 
             <div id="usersTab">
@@ -356,13 +352,10 @@
                 .then(res => res.json())
                 .then(data => {
                     let badge = document.getElementById('notifBadge');
-                    let mobileBadge = document.getElementById('mobileNotifBadge');
                     if (data && data.length > 0) {
                         if (badge) { badge.innerText = data.length; badge.style.display = 'inline-block'; }
-                        if (mobileBadge) { mobileBadge.innerText = data.length; mobileBadge.style.display = 'inline-block'; }
                     } else {
                         if (badge) badge.style.display = 'none';
-                        if (mobileBadge) mobileBadge.style.display = 'none';
                     }
                 })
                 .catch(err => console.error(err));
@@ -420,6 +413,7 @@
 
         function navbarSearchUser() {
             let query = document.getElementById('navbarSearchInput').value.trim();
+            backToContacts();
             showTab('users');
             
             let url = query === "" ? '/active-users' : '/api/users/search?query=' + encodeURIComponent(query);
@@ -858,6 +852,33 @@
         }
 
         function backToContacts() {
+            // Unsubscribe from active chat connections to prevent hidden reading & notification bugs
+            if (currentSubscription) {
+                currentSubscription.unsubscribe();
+                currentSubscription = null;
+            }
+            currentChatConnectionId = null;
+            currentFriendEmail = null;
+
+            // Reset chat panel back to default state
+            let chatHeader = document.getElementById('chatHeader');
+            if (chatHeader) {
+                chatHeader.innerText = "Select a friend to start chatting";
+            }
+            let chatHistory = document.getElementById('chatHistory');
+            if (chatHistory) {
+                chatHistory.style.display = 'none';
+                chatHistory.innerHTML = '';
+            }
+            let chatInputArea = document.getElementById('chatInputArea');
+            if (chatInputArea) {
+                chatInputArea.style.display = 'none';
+            }
+            let chatSettings = document.getElementById('chatSettings');
+            if (chatSettings) {
+                chatSettings.style.display = 'none';
+            }
+
             if (isMobile()) {
                 document.querySelector('.left-panel').classList.remove('hidden-mobile');
                 document.querySelector('.right-panel').classList.remove('visible-mobile');

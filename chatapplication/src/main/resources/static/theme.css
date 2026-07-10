@@ -593,9 +593,6 @@ button:active {
         padding: 8px 10px;
     }
 
-    #btnTabNotifs {
-        display: block !important;
-    }
 
     .profile {
         width: 38px;
