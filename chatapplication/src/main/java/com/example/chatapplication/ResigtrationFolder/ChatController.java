@@ -1,8 +1,7 @@
 package com.example.chatapplication.ResigtrationFolder;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.example.chatapplication.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
@@ -31,7 +30,7 @@ public class ChatController {
     private JwtUntil jwtUntil;
 
     @Autowired
-    JavaMailSender javaMailSender;
+    private EmailService emailService;
 
     @Autowired
     ChatSinginRepo chatsinginRepo;
@@ -131,11 +130,7 @@ public class ChatController {
             otpStore.put(email, new OtpEntry(otp));
 
             try {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setSubject("OTP verification for ChatApp");
-                message.setTo(email);
-                message.setText(otp + " is your OTP for ChatApp password reset. It is valid for 10 minutes.");
-                javaMailSender.send(message);
+                emailService.sendOtp(email, otp);
                 return new RedirectView("verify-otp.html?email=" + email);
             } catch (Exception e) {
                 return new RedirectView("forgetpassword.html?error=" + "Failed to send email. Try again.");

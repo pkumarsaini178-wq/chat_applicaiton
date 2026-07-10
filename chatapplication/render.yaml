@@ -21,3 +21,4 @@ services:
         sync: false
       - key: MAIL_PASSWORD
         sync: false
+

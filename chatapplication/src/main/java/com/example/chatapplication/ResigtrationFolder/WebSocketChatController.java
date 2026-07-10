@@ -81,6 +81,26 @@ public class WebSocketChatController {
         messagingTemplate.convertAndSend("/topic/chat/" + connId, (Object) receipt);
     }
 
+    @MessageMapping("/chat.typing")
+    public void sendTypingStatus(@Payload java.util.Map<String, Object> payload, SimpMessageHeaderAccessor headerAccessor) {
+        String userEmail = extractUserEmail(headerAccessor);
+        if (userEmail == null) return;
+
+        Object connId = payload.get("connectionId");
+        if (connId == null) return;
+
+        Object isTyping = payload.get("isTyping");
+        if (isTyping == null) return;
+
+        java.util.Map<String, Object> typingEvent = new java.util.HashMap<>();
+        typingEvent.put("type", "TYPING_STATUS");
+        typingEvent.put("connectionId", connId);
+        typingEvent.put("user", userEmail);
+        typingEvent.put("isTyping", isTyping);
+
+        messagingTemplate.convertAndSend("/topic/chat/" + connId, (Object) typingEvent);
+    }
+
     @MessageMapping("/request.send")
     public void sendFriendRequest(@Payload java.util.Map<String, Object> payload, SimpMessageHeaderAccessor headerAccessor) {
         String senderEmail = extractUserEmail(headerAccessor);

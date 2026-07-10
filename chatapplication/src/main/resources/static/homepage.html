@@ -330,7 +330,7 @@
 
             <div id="chatInputArea" style="display:none; gap:6px; align-items:center; padding: 10px 14px;">
                 <input type="text" id="chatMessage" placeholder="Type a message..." style="flex:1;"
-                    onkeypress="if(event.key === 'Enter') sendMessage()" autocomplete="off" enterkeyhint="send">
+                    onkeypress="if(event.key === 'Enter') sendMessage()" oninput="handleTypingInput()" autocomplete="off" enterkeyhint="send">
 
                 <input type="file" id="mediaInput" accept="image/*,audio/*,video/*" style="display:none;"
                     onchange="handleMediaUpload(event)">
@@ -431,6 +431,33 @@
         let currentSubscription = null;
         let pendingSentIds = [];
         let sendCounter = 0;
+        let isCurrentlyTyping = false;
+        let typingTimeoutId = null;
+
+        function handleTypingInput() {
+            if (!currentChatConnectionId || !stompClient || !stompClient.connected) return;
+
+            if (!isCurrentlyTyping) {
+                isCurrentlyTyping = true;
+                stompClient.send('/app/chat.typing', {}, JSON.stringify({
+                    connectionId: currentChatConnectionId,
+                    isTyping: true
+                }));
+            }
+
+            if (typingTimeoutId) {
+                clearTimeout(typingTimeoutId);
+            }
+
+            typingTimeoutId = setTimeout(function() {
+                isCurrentlyTyping = false;
+                stompClient.send('/app/chat.typing', {}, JSON.stringify({
+                    connectionId: currentChatConnectionId,
+                    isTyping: false
+                }));
+            }, 1500);
+        }
+
 
         function navbarSearchUser() {
             let query = document.getElementById('navbarSearchInput').value.trim();
@@ -742,7 +769,20 @@
             if (stompClient && stompClient.connected) {
                 currentSubscription = stompClient.subscribe('/topic/chat/' + connectionId, function (payload) {
                     let data = JSON.parse(payload.body);
-                    if (data.type === 'DELIVERY_RECEIPT') {
+                    if (data.type === 'TYPING_STATUS') {
+                        if (data.user !== currentUserEmail) {
+                            let indicator = document.getElementById('typingIndicator');
+                            if (indicator) {
+                                indicator.style.display = data.isTyping ? 'block' : 'none';
+                                if (data.isTyping) {
+                                    let history = document.getElementById('chatHistory');
+                                    if (history) {
+                                        history.scrollTop = history.scrollHeight;
+                                    }
+                                }
+                            }
+                        }
+                    } else if (data.type === 'DELIVERY_RECEIPT') {
                         handleDeliveryReceipt(data);
                     } else if (data.type === 'READ_RECEIPT') {
                         handleReadReceipt(data);
@@ -936,6 +976,13 @@
         function openChat(connectionId, friendEmail) {
             currentChatConnectionId = connectionId;
             currentFriendEmail = friendEmail;
+            
+            // Hide typing indicator for new chat and reset local typing state
+            let indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.style.display = 'none';
+            isCurrentlyTyping = false;
+            if (typingTimeoutId) clearTimeout(typingTimeoutId);
+
             document.getElementById('chatHeader').innerHTML = friendEmail.split('@')[0] + ' <span id="friendStatus" style="font-size:13px; font-weight:normal; color: var(--text-secondary);"></span>';
             document.getElementById('chatHistory').style.display = 'flex';
             document.getElementById('chatInputArea').style.display = 'flex';
@@ -1195,6 +1242,16 @@
 
                 stompClient.send('/app/chat.send', {}, JSON.stringify(payload));
                 input.value = '';
+
+                // Reset typing state immediately
+                if (isCurrentlyTyping) {
+                    isCurrentlyTyping = false;
+                    if (typingTimeoutId) clearTimeout(typingTimeoutId);
+                    stompClient.send('/app/chat.typing', {}, JSON.stringify({
+                        connectionId: currentChatConnectionId,
+                        isTyping: false
+                    }));
+                }
 
                 // Clear reply preview
                 cancelReply();
