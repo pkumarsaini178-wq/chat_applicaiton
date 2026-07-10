@@ -32,14 +32,14 @@ services:
         fromDatabase:
           name: chat-db
           property: password
+      - key: MAIL_HOST
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
       - key: MAIL_USERNAME
         sync: false # Set this manually in the Render Dashboard
       - key: MAIL_PASSWORD
         sync: false # Set this manually in the Render Dashboard
-      - key: SENDGRID_API_KEY
-        sync: false # Set this manually in the Render Dashboard
-      - key: MAIL_FROM
-        sync: false # Set this manually in the Render Dashboard (your verified SendGrid sender email)
       - key: JWT_SECRET
         generateValue: true # Render will automatically generate a strong secret
       - key: CHAT_ENCRYPTION_KEY
