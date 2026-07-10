@@ -22,6 +22,7 @@ public class WebSocketChatController {
         private String message;
         private String messageType;
         private Long mediaId;
+        private Long parentMessageId;
 
         public Long getConnectionId() { return connectionId; }
         public void setConnectionId(Long connectionId) { this.connectionId = connectionId; }
@@ -34,6 +35,9 @@ public class WebSocketChatController {
 
         public Long getMediaId() { return mediaId; }
         public void setMediaId(Long mediaId) { this.mediaId = mediaId; }
+
+        public Long getParentMessageId() { return parentMessageId; }
+        public void setParentMessageId(Long parentMessageId) { this.parentMessageId = parentMessageId; }
     }
 
     private String extractUserEmail(SimpMessageHeaderAccessor headerAccessor) {
@@ -59,7 +63,7 @@ public class WebSocketChatController {
             messageType = "TEXT";
         }
 
-        chatService.appendMessage(payload.getConnectionId(), senderEmail, payload.getMessage(), messageType, payload.getMediaId());
+        chatService.appendMessage(payload.getConnectionId(), senderEmail, payload.getMessage(), messageType, payload.getMediaId(), payload.getParentMessageId());
     }
 
     @MessageMapping("/chat.read")

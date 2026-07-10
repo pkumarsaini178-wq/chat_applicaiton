@@ -56,4 +56,9 @@ public class MediaService {
         }
         return entity;
     }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteMedia(Long mediaId) {
+        mediaRepository.deleteById(mediaId);
+    }
 }

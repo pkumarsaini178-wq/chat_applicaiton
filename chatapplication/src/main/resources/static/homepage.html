@@ -309,6 +309,25 @@
                 <!-- Chat messages will go here -->
             </div>
             <div id="typingIndicator" class="typing-indicator"><span>typing</span><span>.</span><span>.</span><span>.</span></div>
+            
+            <!-- Reply Preview Bar -->
+            <div id="replyPreviewBar" style="display:none; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 16px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); font-size:12px;">
+                <div style="display:flex; flex-direction:column; min-width:0; flex:1; border-left:3px solid var(--primary); padding-left:8px;">
+                    <span id="replySender" style="font-weight:600; color:var(--primary);">Replying to pankaj</span>
+                    <span id="replySnippet" style="color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Hello there!</span>
+                </div>
+                <button onclick="cancelReply()" style="background:none; border:none; font-size:18px; color:var(--text-muted); cursor:pointer; width:auto; padding:0 4px; font-weight:bold; box-shadow:none;">&times;</button>
+            </div>
+            
+            <!-- Edit Preview Bar -->
+            <div id="editPreviewBar" style="display:none; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 16px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); font-size:12px;">
+                <div style="display:flex; flex-direction:column; min-width:0; flex:1; border-left:3px solid var(--whatsapp-green); padding-left:8px;">
+                    <span style="font-weight:600; color:var(--whatsapp-green);">Editing Message</span>
+                    <span id="editSnippet" style="color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Wrong message</span>
+                </div>
+                <button onclick="cancelEdit()" style="background:none; border:none; font-size:18px; color:var(--text-muted); cursor:pointer; width:auto; padding:0 4px; font-weight:bold; box-shadow:none;">&times;</button>
+            </div>
+
             <div id="chatInputArea" style="display:none; gap:6px; align-items:center; padding: 10px 14px;">
                 <input type="text" id="chatMessage" placeholder="Type a message..." style="flex:1;"
                     onkeypress="if(event.key === 'Enter') sendMessage()" autocomplete="off" enterkeyhint="send">
@@ -324,6 +343,8 @@
     </div>
 
     <script>
+        let replyingToMessageId = null;
+        let editingMessageId = null;
 
         function esc(str) {
             if (!str) return '';
@@ -735,6 +756,28 @@
                                 tick.innerHTML = '&#10003;&#10003;';
                             }
                         }
+                    } else if (data.type === 'MESSAGE_DELETED') {
+                        let msgEl = document.querySelector('[data-message-id="' + data.messageId + '"]');
+                        if (msgEl) {
+                            msgEl.remove();
+                        }
+                    } else if (data.type === 'MESSAGE_EDITED') {
+                        let msgEl = document.querySelector('[data-message-id="' + data.messageId + '"]');
+                        if (msgEl) {
+                            let textEl = msgEl.querySelector('.msg-text');
+                            if (textEl) {
+                                textEl.innerText = data.newMessage;
+                            }
+                            let editedTag = msgEl.querySelector('.edited-tag');
+                            if (!editedTag) {
+                                let contentBlock = textEl.parentElement;
+                                let tag = document.createElement('small');
+                                tag.className = 'edited-tag';
+                                tag.style.cssText = 'font-size:10px; opacity:0.6; font-style:italic; margin-left:4px;';
+                                tag.innerText = '(edited)';
+                                contentBlock.insertBefore(tag, contentBlock.querySelector('.tick') || null);
+                            }
+                        }
                     } else if (data.sender === currentUserEmail && pendingSentIds.length > 0) {
                         let localId = pendingSentIds.shift();
                         let msgEl = document.querySelector('[data-message-id="' + localId + '"]');
@@ -882,6 +925,11 @@
             if (isMobile()) {
                 document.querySelector('.left-panel').classList.remove('hidden-mobile');
                 document.querySelector('.right-panel').classList.remove('visible-mobile');
+                
+                // Force scroll reset to ensure the top navbar is visible and not shifted by keyboard focus scroll
+                window.scrollTo(0, 0);
+                document.body.scrollTop = 0;
+                document.documentElement.scrollTop = 0;
             }
         }
 
@@ -971,13 +1019,29 @@
                 }
             }
 
+            let quoteHtml = '';
+            if (msg.parentMessageId) {
+                let pText = msg.parentMessageText || '[Encrypted message]';
+                let pSender = msg.parentMessageSender || 'Unknown';
+                quoteHtml = `
+                    <div class="quoted-msg" onclick="scrollToMessage(${msg.parentMessageId})" style="background:rgba(0,0,0,0.06); border-left:3px solid var(--primary); padding:6px; border-radius:4px; margin-bottom:6px; font-size:12px; cursor:pointer; width:100%; text-align:left;">
+                        <strong style="color:var(--primary); font-size:11px;">${esc(pSender)}</strong>
+                        <div style="color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">${esc(pText)}</div>
+                    </div>
+                `;
+            }
+
+            let editedHtml = msg.isEdited ? ' <small class="edited-tag" style="font-size:10px; opacity:0.6; font-style:italic; margin-left:4px;">(edited)</small>' : '';
+
             let msgIdAttr = msg.id ? 'data-message-id="' + msg.id + '"' : '';
 
             historyDiv.innerHTML += `
                 <div class="chat-msg ${msgClass}" style="align-self: ${align};" ${msgIdAttr}>
                     <div class="chat-time">${esc(msg.senderName || msg.sender)} - ${esc(timestamp)}</div>
-                    <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px;">
-                        <span>${esc(msg.message)}</span>
+                    ${quoteHtml}
+                    <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px; text-align:left; width:100%;">
+                        <span class="msg-text">${esc(msg.message)}</span>
+                        ${editedHtml}
                         ${tickHtml}
                     </div>
                     ${mediaContent}
@@ -1062,11 +1126,24 @@
                 tickHtml = msg.isDelivered ? '<span class="tick delivered">&#10003;&#10003;</span>' : '<span class="tick sent">&#10003;</span>';
             }
 
+            let quoteHtml = '';
+            if (msg.parentMessageId) {
+                let pText = msg.parentMessageText || '[Encrypted message]';
+                let pSender = msg.parentMessageSender || 'Unknown';
+                quoteHtml = '<div class="quoted-msg" onclick="scrollToMessage(' + msg.parentMessageId + ')" style="background:rgba(0,0,0,0.06); border-left:3px solid var(--primary); padding:6px; border-radius:4px; margin-bottom:6px; font-size:12px; cursor:pointer; width:100%; text-align:left;">' +
+                    '<strong style="color:var(--primary); font-size:11px;">' + esc(pSender) + '</strong>' +
+                    '<div style="color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">' + esc(pText) + '</div>' +
+                    '</div>';
+            }
+
+            let editedHtml = msg.isEdited ? ' <small class="edited-tag" style="font-size:10px; opacity:0.6; font-style:italic; margin-left:4px;">(edited)</small>' : '';
+
             let msgIdAttr = msg.id ? 'data-message-id="' + msg.id + '"' : '';
 
             return '<div class="chat-msg ' + msgClass + '" style="align-self: ' + align + ';" ' + msgIdAttr + '>' +
                 '<div class="chat-time">' + esc(msg.senderName || msg.sender) + ' - ' + esc(timestamp) + '</div>' +
-                '<div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px;"><span>' + esc(msg.message || '') + '</span>' + tickHtml + '</div>' +
+                quoteHtml +
+                '<div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px; text-align:left; width:100%;"><span class="msg-text">' + esc(msg.message || '') + '</span>' + editedHtml + tickHtml + '</div>' +
                 mediaContent +
                 '</div>';
         }
@@ -1079,6 +1156,12 @@
             let msg = input.value.trim();
             if (!msg || !currentChatConnectionId) return;
 
+            // If in editing mode, call the REST API instead
+            if (editingMessageId) {
+                updateMessageContent(editingMessageId, msg);
+                return;
+            }
+
             if (stompClient && stompClient.connected) {
                 isSending = true;
                 let sendBtn = document.getElementById('sendBtn');
@@ -1087,6 +1170,15 @@
                 let localId = 'send_' + (++sendCounter);
                 pendingSentIds.push(localId);
 
+                // Construct message payload
+                let payload = {
+                    connectionId: currentChatConnectionId,
+                    message: msg,
+                    messageType: 'TEXT',
+                    parentMessageId: replyingToMessageId // Pass parent message ID if replying
+                };
+
+                // Append local message placeholder
                 appendMessageToChat({
                     id: localId,
                     sender: currentUserEmail,
@@ -1094,16 +1186,18 @@
                     message: msg,
                     messageType: 'TEXT',
                     timestamp: new Date().toISOString(),
-                    isDelivered: false
+                    isDelivered: false,
+                    parentMessageId: replyingToMessageId,
+                    parentMessageText: replyingToMessageId ? document.getElementById('replySnippet').innerText : null,
+                    parentMessageSender: replyingToMessageId ? document.getElementById('replySender').innerText.replace('Replying to ', '') : null,
+                    isEdited: false
                 });
 
-                let payload = {
-                    connectionId: currentChatConnectionId,
-                    message: msg,
-                    messageType: 'TEXT'
-                };
                 stompClient.send('/app/chat.send', {}, JSON.stringify(payload));
                 input.value = '';
+
+                // Clear reply preview
+                cancelReply();
 
                 setTimeout(function() {
                     isSending = false;
@@ -1112,6 +1206,180 @@
             } else {
                 alert('WebSocket is not connected. Please try again later.');
             }
+        }
+
+        function updateMessageContent(messageId, newContent) {
+            let formData = new FormData();
+            formData.append('messageId', messageId);
+            formData.append('newContent', newContent);
+
+            fetch('/api/chat/message/edit', {
+                method: 'POST',
+                body: formData
+            }).then(res => {
+                if (res.ok) {
+                    cancelEdit();
+                } else {
+                    alert('Failed to edit message');
+                }
+            }).catch(err => {
+                console.error(err);
+                alert('Failed to edit message');
+            });
+        }
+
+        function scrollToMessage(messageId) {
+            let msgEl = document.querySelector('[data-message-id="' + messageId + '"]');
+            if (msgEl) {
+                msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Briefly flash/highlight the message
+                msgEl.style.transition = 'background 0.3s ease';
+                let origBg = msgEl.style.background;
+                msgEl.style.background = 'rgba(253, 203, 110, 0.4)'; // soft highlight yellow
+                setTimeout(function() {
+                    msgEl.style.background = origBg;
+                }, 1000);
+            } else {
+                showToast("Message not found in loaded history", "info");
+            }
+        }
+
+        // Context Menu Builders
+        document.getElementById('chatHistory').addEventListener('click', function(e) {
+            let msgEl = e.target.closest('.chat-msg');
+            if (!msgEl) return;
+
+            let msgId = msgEl.getAttribute('data-message-id');
+            // Ignore temporary sent message placeholders
+            if (!msgId || msgId === '-1' || msgId.startsWith('send_')) return;
+
+            let isMe = msgEl.classList.contains('me');
+            let msgTextEl = msgEl.querySelector('.msg-text');
+            let msgText = msgTextEl ? msgTextEl.innerText : '';
+            let senderNameEl = msgEl.querySelector('.chat-time');
+            let senderName = senderNameEl ? senderNameEl.innerText.split(' - ')[0] : 'Unknown';
+
+            showContextMenu(msgId, isMe, msgText, senderName, e);
+        });
+
+        function showContextMenu(msgId, isMe, msgText, senderName, event) {
+            let existing = document.getElementById('msgContextMenu');
+            if (existing) existing.remove();
+
+            let menu = document.createElement('div');
+            menu.id = 'msgContextMenu';
+            menu.style.cssText = 'position:fixed; background:var(--card-bg); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.15); z-index:9999; display:flex; flex-direction:column; gap:4px; min-width:140px;';
+            menu.style.left = event.clientX + 'px';
+            menu.style.top = event.clientY + 'px';
+
+            // 1. Reply
+            let btnReply = createMenuButton('Reply', function() {
+                startReply(msgId, senderName, msgText);
+            });
+            menu.appendChild(btnReply);
+
+            // 2. Edit (Only for own messages)
+            if (isMe) {
+                let btnEdit = createMenuButton('Edit', function() {
+                    startEdit(msgId, msgText);
+                });
+                menu.appendChild(btnEdit);
+            }
+
+            // 3. Delete for me
+            let btnDeleteMe = createMenuButton('Delete for me', function() {
+                deleteSingleMessage(msgId, 'ME');
+            });
+            menu.appendChild(btnDeleteMe);
+
+            // 4. Delete for everyone (Only for own messages)
+            if (isMe) {
+                let btnDeleteEveryone = createMenuButton('Delete for everyone', function() {
+                    deleteSingleMessage(msgId, 'EVERYONE');
+                });
+                btnDeleteEveryone.style.color = 'var(--danger)';
+                menu.appendChild(btnDeleteEveryone);
+            }
+
+            document.body.appendChild(menu);
+            event.stopPropagation();
+        }
+
+        function createMenuButton(text, onClick) {
+            let btn = document.createElement('button');
+            btn.style.cssText = 'background:none; border:none; padding:8px 12px; color:var(--text-main); font-size:13px; font-weight:500; text-align:left; cursor:pointer; width:100%; border-radius:4px; box-shadow:none;';
+            btn.innerText = text;
+            btn.onclick = function() {
+                onClick();
+                let m = document.getElementById('msgContextMenu');
+                if (m) m.remove();
+            };
+            btn.onmouseover = function() { this.style.background = 'var(--bg-color)'; };
+            btn.onmouseout = function() { this.style.background = 'none'; };
+            return btn;
+        }
+
+        // Close context menu on clicking elsewhere
+        document.addEventListener('click', function(e) {
+            let menu = document.getElementById('msgContextMenu');
+            if (menu && !menu.contains(e.target)) {
+                menu.remove();
+            }
+        });
+
+        // Reply and Edit UI handlers
+        function startReply(msgId, sender, text) {
+            cancelEdit(); // close edit if open
+            replyingToMessageId = msgId;
+            document.getElementById('replySender').innerText = 'Replying to ' + sender;
+            document.getElementById('replySnippet').innerText = text;
+            document.getElementById('replyPreviewBar').style.display = 'flex';
+            setTimeout(function() { document.getElementById('chatMessage').focus(); }, 100);
+        }
+
+        function cancelReply() {
+            replyingToMessageId = null;
+            document.getElementById('replyPreviewBar').style.display = 'none';
+        }
+
+        function startEdit(msgId, text) {
+            cancelReply(); // close reply if open
+            editingMessageId = msgId;
+            document.getElementById('editSnippet').innerText = text;
+            document.getElementById('editPreviewBar').style.display = 'flex';
+            document.getElementById('chatMessage').value = text;
+            document.getElementById('sendBtn').innerText = 'Update';
+            setTimeout(function() { document.getElementById('chatMessage').focus(); }, 100);
+        }
+
+        function cancelEdit() {
+            editingMessageId = null;
+            document.getElementById('editPreviewBar').style.display = 'none';
+            document.getElementById('sendBtn').innerText = 'Send';
+            document.getElementById('chatMessage').value = '';
+        }
+
+        function deleteSingleMessage(msgId, deleteType) {
+            let formData = new FormData();
+            formData.append('messageId', msgId);
+            formData.append('deleteType', deleteType);
+
+            fetch('/api/chat/message/delete', {
+                method: 'POST',
+                body: formData
+            }).then(res => {
+                if (res.ok) {
+                    if (deleteType === 'ME') {
+                        let msgEl = document.querySelector('[data-message-id="' + msgId + '"]');
+                        if (msgEl) msgEl.remove();
+                    }
+                } else {
+                    alert('Failed to delete message');
+                }
+            }).catch(err => {
+                console.error(err);
+                alert('Failed to delete message');
+            });
         }
 
         function compressImage(file, quality, callback) {

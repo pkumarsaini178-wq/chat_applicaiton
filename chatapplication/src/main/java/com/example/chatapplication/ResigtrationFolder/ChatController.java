@@ -431,4 +431,44 @@ public class ChatController {
         response.addCookie(cookie);
         return org.springframework.http.ResponseEntity.ok().build();
     }
+
+    @PostMapping("/api/chat/message/delete")
+    @ResponseBody
+    public org.springframework.http.ResponseEntity<String> deleteMessage(
+            @RequestParam Long messageId, 
+            @RequestParam String deleteType) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentUser = auth.getName();
+        
+        try {
+            boolean success = chatService.deleteMessage(messageId, currentUser, deleteType);
+            if (success) {
+                return org.springframework.http.ResponseEntity.ok("SUCCESS");
+            } else {
+                return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body("Unauthorized");
+            }
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body("Error");
+        }
+    }
+
+    @PostMapping("/api/chat/message/edit")
+    @ResponseBody
+    public org.springframework.http.ResponseEntity<String> editMessage(
+            @RequestParam Long messageId, 
+            @RequestParam String newContent) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentUser = auth.getName();
+        
+        try {
+            boolean success = chatService.editMessage(messageId, currentUser, newContent);
+            if (success) {
+                return org.springframework.http.ResponseEntity.ok("SUCCESS");
+            } else {
+                return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body("Unauthorized");
+            }
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body("Error");
+        }
+    }
 }

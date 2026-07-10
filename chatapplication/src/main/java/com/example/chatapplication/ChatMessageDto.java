@@ -12,4 +12,9 @@ public class ChatMessageDto {
     private String messageType;
     private String mediaData;
     private Boolean isDelivered;
+
+    private Long parentMessageId;
+    private String parentMessageText;
+    private String parentMessageSender;
+    private Boolean isEdited;
 }

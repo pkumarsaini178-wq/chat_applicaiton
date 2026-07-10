@@ -34,4 +34,8 @@ public class ChatEntity {
 
     private Boolean isDelivered = false;
     private java.time.LocalDateTime deliveredAt;
+
+    private String deletedBy;
+    private Long parentMessageId;
+    private Boolean isEdited = false;
 }

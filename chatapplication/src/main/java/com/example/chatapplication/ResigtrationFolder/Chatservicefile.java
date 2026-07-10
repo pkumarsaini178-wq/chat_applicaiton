@@ -31,6 +31,9 @@ public class Chatservicefile {
     @Autowired
     private TransactionTemplate transactionTemplate;
 
+    @Autowired
+    private com.example.chatapplication.MediaService mediaService;
+
     public List<ChatEntity> getAllMessages() {
         return chatRepository.findAll();
     }
@@ -150,7 +153,7 @@ public class Chatservicefile {
     @org.springframework.beans.factory.annotation.Qualifier("messageExecutor")
     private org.springframework.core.task.TaskExecutor messageExecutor;
 
-    public void appendMessage(Long connectionId, String sender, String message, String messageType, Long mediaId) {
+    public void appendMessage(Long connectionId, String sender, String message, String messageType, Long mediaId, Long parentMessageId) {
         // Phase 1: Publish plaintext immediately (FAST - no encryption, no DB)
         com.example.chatapplication.ChatMessageDto fastDto = new com.example.chatapplication.ChatMessageDto();
         fastDto.setId(-1L);
@@ -162,6 +165,28 @@ public class Chatservicefile {
         fastDto.setMediaData(mediaId != null ? "/api/chat/media/" + mediaId : null);
         fastDto.setTimestamp(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         fastDto.setIsDelivered(false);
+        fastDto.setParentMessageId(parentMessageId);
+        fastDto.setIsEdited(false);
+
+        if (parentMessageId != null) {
+            Optional<ChatEntity> parentOpt = chatRepository.findById(parentMessageId);
+            if (parentOpt.isPresent()) {
+                ChatEntity parent = parentOpt.get();
+                if (parent.getDeletedBy() == null) {
+                    try {
+                        byte[] decrypted = encryptionService.decrypt(parent.getEncryptedMessage(), parent.getEncryptionIv());
+                        fastDto.setParentMessageText(new String(decrypted, java.nio.charset.StandardCharsets.UTF_8));
+                    } catch (Exception e) {
+                        fastDto.setParentMessageText("[Encrypted message]");
+                    }
+                } else {
+                    fastDto.setParentMessageText("[Deleted message]");
+                }
+                Optional<ChatSingin> parentSenderOpt = chatSinginRepo.findByuseremail(parent.getSender());
+                fastDto.setParentMessageSender(parentSenderOpt.isPresent() && parentSenderOpt.get().getUsername() != null ? parentSenderOpt.get().getUsername() : parent.getSender());
+            }
+        }
+
         messagingTemplate.convertAndSend("/topic/chat/" + connectionId, fastDto);
 
         // Notify receiver via personal notification channel
@@ -187,6 +212,7 @@ public class Chatservicefile {
                         entity.setMessageType(messageType);
                         entity.setMediaId(mediaId);
                         entity.setTimestamp(java.time.LocalDateTime.now());
+                        entity.setParentMessageId(parentMessageId);
 
                         byte[] messageBytes = message != null ? message.getBytes(java.nio.charset.StandardCharsets.UTF_8)
                                 : new byte[0];
@@ -261,6 +287,9 @@ public class Chatservicefile {
 
         for (ChatEntity entity : entities) {
             if (clearedAt != null && entity.getTimestamp() != null && !entity.getTimestamp().isAfter(clearedAt)) {
+                continue;
+            }
+            if (entity.getDeletedBy() != null && entity.getDeletedBy().equals(currentUserEmail)) {
                 continue;
             }
             dtoList.add(mapToDto(entity, nameCache));
@@ -339,6 +368,30 @@ public class Chatservicefile {
         }
 
         dto.setIsDelivered(entity.getIsDelivered());
+        dto.setParentMessageId(entity.getParentMessageId());
+        dto.setIsEdited(entity.getIsEdited());
+
+        if (entity.getParentMessageId() != null) {
+            Optional<ChatEntity> parentOpt = chatRepository.findById(entity.getParentMessageId());
+            if (parentOpt.isPresent()) {
+                ChatEntity parent = parentOpt.get();
+                if (parent.getDeletedBy() == null) {
+                    try {
+                        byte[] decrypted = encryptionService.decrypt(parent.getEncryptedMessage(), parent.getEncryptionIv());
+                        dto.setParentMessageText(new String(decrypted, java.nio.charset.StandardCharsets.UTF_8));
+                    } catch (Exception e) {
+                        dto.setParentMessageText("[Encrypted message]");
+                    }
+                } else {
+                    dto.setParentMessageText("[Deleted message]");
+                }
+                Optional<ChatSingin> parentSenderOpt = chatSinginRepo.findByuseremail(parent.getSender());
+                dto.setParentMessageSender(parentSenderOpt.isPresent() && parentSenderOpt.get().getUsername() != null ? parentSenderOpt.get().getUsername() : parent.getSender());
+            } else {
+                dto.setParentMessageText("[Message deleted]");
+                dto.setParentMessageSender("System");
+            }
+        }
 
         return dto;
     }
@@ -393,5 +446,104 @@ public class Chatservicefile {
     public void clearChatHistory(Long connectionId) {
         String currentUser = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
         clearChatHistory(connectionId, currentUser);
+    }
+
+    @Transactional
+    public boolean deleteMessage(Long messageId, String currentUserEmail, String deleteType) {
+        Optional<ChatEntity> msgOpt = chatRepository.findById(messageId);
+        if (!msgOpt.isPresent()) {
+            return false;
+        }
+        ChatEntity message = msgOpt.get();
+
+        // Authorization check: User must be part of the connection
+        Optional<com.example.chatapplication.ChatConnection> connOpt = chatConnectionRepo.findById(message.getConnectionId());
+        if (!connOpt.isPresent()) {
+            return false;
+        }
+        com.example.chatapplication.ChatConnection conn = connOpt.get();
+        if (!conn.getUser1Email().equals(currentUserEmail) && !conn.getUser2Email().equals(currentUserEmail)) {
+            return false;
+        }
+
+        if ("EVERYONE".equalsIgnoreCase(deleteType)) {
+            // User can only delete for everyone if they are the sender
+            if (!message.getSender().equals(currentUserEmail)) {
+                return false;
+            }
+
+            // Delete media file if any
+            if (message.getMediaId() != null) {
+                try {
+                    mediaService.deleteMedia(message.getMediaId());
+                } catch (Exception e) {
+                    // Ignore
+                }
+            }
+
+            chatRepository.delete(message);
+
+            // Broadcast the deletion real-time
+            java.util.Map<String, Object> update = new java.util.HashMap<>();
+            update.put("type", "MESSAGE_DELETED");
+            update.put("connectionId", message.getConnectionId());
+            update.put("messageId", messageId);
+            update.put("deleteType", "EVERYONE");
+            messagingTemplate.convertAndSend("/topic/chat/" + message.getConnectionId(), (Object) update);
+
+            return true;
+        } else if ("ME".equalsIgnoreCase(deleteType)) {
+            // If the message is already marked as deleted by the other user, we can delete the row completely
+            if (message.getDeletedBy() != null && !message.getDeletedBy().equals(currentUserEmail)) {
+                if (message.getMediaId() != null) {
+                    try {
+                        mediaService.deleteMedia(message.getMediaId());
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                }
+                chatRepository.delete(message);
+            } else {
+                message.setDeletedBy(currentUserEmail);
+                chatRepository.save(message);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    @Transactional
+    public boolean editMessage(Long messageId, String currentUserEmail, String newContent) {
+        Optional<ChatEntity> msgOpt = chatRepository.findById(messageId);
+        if (!msgOpt.isPresent()) {
+            return false;
+        }
+        ChatEntity message = msgOpt.get();
+
+        // Authorization check: User must be the sender of the message
+        if (!message.getSender().equals(currentUserEmail)) {
+            return false;
+        }
+
+        try {
+            byte[] messageBytes = newContent != null ? newContent.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+            com.example.chatapplication.EncryptionService.EncryptedData encryptedMsgData = encryptionService.encrypt(messageBytes);
+            message.setEncryptedMessage(encryptedMsgData.getCiphertext());
+            message.setEncryptionIv(encryptedMsgData.getIv());
+            message.setIsEdited(true);
+            chatRepository.save(message);
+
+            // Broadcast the edit real-time
+            java.util.Map<String, Object> update = new java.util.HashMap<>();
+            update.put("type", "MESSAGE_EDITED");
+            update.put("connectionId", message.getConnectionId());
+            update.put("messageId", messageId);
+            update.put("newMessage", newContent);
+            messagingTemplate.convertAndSend("/topic/chat/" + message.getConnectionId(), (Object) update);
+
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
