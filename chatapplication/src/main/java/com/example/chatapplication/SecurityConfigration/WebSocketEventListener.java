@@ -29,9 +29,6 @@ public class WebSocketEventListener {
     @Autowired
     private SimpMessageSendingOperations messagingTemplate;
 
-    @Autowired
-    private org.springframework.messaging.simp.user.SimpUserRegistry simpUserRegistry;
-
     private final Map<String, Set<String>> userSessions = new ConcurrentHashMap<>();
     private final Map<String, Instant> pendingOffline = new ConcurrentHashMap<>();
 
@@ -50,22 +47,7 @@ public class WebSocketEventListener {
                 if (sessionId != null) {
                     sessions.add(sessionId);
                 }
-
-                // Stale sessions cleanup using SimpUserRegistry
-                if (simpUserRegistry != null) {
-                    org.springframework.messaging.simp.user.SimpUser simpUser = simpUserRegistry.getUser(userEmail);
-                    if (simpUser != null) {
-                        Set<String> activeSessionIds = new HashSet<>();
-                        for (org.springframework.messaging.simp.user.SimpSession session : simpUser.getSessions()) {
-                            activeSessionIds.add(session.getId());
-                        }
-                        sessions.retainAll(activeSessionIds);
-                    }
-                }
-
-                if (wasEmpty || sessions.isEmpty()) {
-                    updateUserStatus(userEmail, true);
-                } else {
+                if (wasEmpty) {
                     updateUserStatus(userEmail, true);
                 }
             }

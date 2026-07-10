@@ -458,22 +458,6 @@
             }, 1500);
         }
 
-        function fetchUsersStatus(emails) {
-            if (!emails || emails.length === 0) return Promise.resolve({});
-            return fetch('/api/users/status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(emails)
-            })
-            .then(res => res.json())
-            .catch(err => {
-                console.error("Failed to fetch batch statuses", err);
-                let fallback = {};
-                emails.forEach(e => { fallback[e] = { isOnline: false, lastSeen: null }; });
-                return fallback;
-            });
-        }
-
         function navbarSearchUser() {
             let query = document.getElementById('navbarSearchInput').value.trim();
             backToContacts();
@@ -487,14 +471,21 @@
                     let userList = document.getElementById("userList");
                     userList.innerHTML = '';
                     let addedUsers = 0;
-                    let emails = [];
+                    let statusPromises = [];
                     data.forEach(user => {
                         let email = user.useremail || 'No email';
                         if (email !== 'No email' && email !== currentUserEmail) {
-                            emails.push(email);
+                            statusPromises.push(
+                                fetch('/api/user/status/' + encodeURIComponent(email))
+                                    .then(res => res.json())
+                                    .then(s => ({ email, isOnline: s.isOnline }))
+                                    .catch(() => ({ email, isOnline: false }))
+                            );
                         }
                     });
-                    fetchUsersStatus(emails).then(statusMap => {
+                    Promise.all(statusPromises).then(statuses => {
+                        let statusMap = {};
+                        statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
                         data.forEach(user => {
                             let username = user.username || 'Unknown';
                             let email = user.useremail || 'No email';
@@ -505,7 +496,7 @@
 
                             addedUsers++;
                             let profileInitial = username.charAt(0).toUpperCase();
-                            let isOnline = (statusMap[email] && statusMap[email].isOnline) || false;
+                            let isOnline = statusMap[email] || false;
                             let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
 
                             let userHtml = `
@@ -735,11 +726,6 @@
         }
 
         function connectWebSocket() {
-            if (stompClient) {
-                try {
-                    stompClient.disconnect();
-                } catch(e) { console.warn('stompClient disconnect error: ', e); }
-            }
             let socket = new SockJS('/ws');
             stompClient = Stomp.over(socket);
             stompClient.debug = null;
@@ -770,11 +756,6 @@
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
                 if (!stompClient || !stompClient.connected) {
-                    if (stompClient) {
-                        try {
-                            stompClient.disconnect();
-                        } catch(e) {}
-                    }
                     connectWebSocket();
                 }
             }
@@ -910,15 +891,22 @@
                         friendList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No friends yet. Add friends to start chatting.</p>';
                         return;
                     }
-                    let emails = [];
+                    let statusPromises = [];
                     data.forEach(conn => {
                         let friendEmail = conn.user1Email === currentUserEmail ? conn.user2Email : conn.user1Email;
-                        emails.push(friendEmail);
+                        statusPromises.push(
+                            fetch('/api/user/status/' + encodeURIComponent(friendEmail))
+                                .then(res => res.json())
+                                .then(status => ({ email: friendEmail, isOnline: status.isOnline }))
+                                .catch(() => ({ email: friendEmail, isOnline: false }))
+                        );
                     });
-                    fetchUsersStatus(emails).then(statusMap => {
+                    Promise.all(statusPromises).then(statuses => {
+                        let statusMap = {};
+                        statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
                         data.forEach(conn => {
                             let friendEmail = conn.user1Email === currentUserEmail ? conn.user2Email : conn.user1Email;
-                            let isOnline = (statusMap[friendEmail] && statusMap[friendEmail].isOnline) || false;
+                            let isOnline = statusMap[friendEmail] || false;
                             let profileInitial = friendEmail.charAt(0).toUpperCase();
                             let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
                             let statusText = isOnline ? 'online' : 'offline';
@@ -1598,6 +1586,7 @@
 
         window.onload = function () {
             document.getElementById('chatInputArea').style.display = 'none';
+            fetch('/api/user/online', { method: 'POST' }).catch(function() {});
             connectWebSocket();
             fetch('/api/current-user')
                 .then(res => res.json())
@@ -1623,14 +1612,21 @@
                             userList.innerHTML = '';
 
                             let addedUsers = 0;
-                            let emails = [];
+                            let userStatusPromises = [];
                             data.forEach(user => {
                                 let email = user.useremail || 'No email';
                                 if (email !== 'No email' && email !== currentUserEmail) {
-                                    emails.push(email);
+                                    userStatusPromises.push(
+                                        fetch('/api/user/status/' + encodeURIComponent(email))
+                                            .then(res => res.json())
+                                            .then(s => ({ email: email, isOnline: s.isOnline }))
+                                            .catch(() => ({ email: email, isOnline: false }))
+                                    );
                                 }
                             });
-                            fetchUsersStatus(emails).then(statusMap => {
+                            Promise.all(userStatusPromises).then(statuses => {
+                                let statusMap = {};
+                                statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
                                 data.forEach(user => {
                                     let username = user.username || 'Unknown';
                                     let email = user.useremail || 'No email';
@@ -1641,7 +1637,7 @@
 
                                     addedUsers++;
                                     let profileInitial = username.charAt(0).toUpperCase();
-                                    let isOnline = (statusMap[email] && statusMap[email].isOnline) || false;
+                                    let isOnline = statusMap[email] || false;
                                     let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
 
                                     let userHtml = `
@@ -1707,31 +1703,6 @@
             }
         }
 
-        // Periodically refresh active chat friend status and friend list status
-        setInterval(function() {
-            if (document.visibilityState === 'visible' && currentUserEmail) {
-                loadFriends();
-
-                if (currentChatConnectionId && currentFriendEmail) {
-                    fetch('/api/user/status/' + encodeURIComponent(currentFriendEmail))
-                        .then(res => res.json())
-                        .then(status => {
-                            let el = document.getElementById('friendStatus');
-                            if (el && currentFriendEmail) {
-                                if (status.isOnline) {
-                                    el.innerHTML = '<span style="color: var(--whatsapp-green);">Online</span>';
-                                } else if (status.lastSeen) {
-                                    let d = new Date(status.lastSeen);
-                                    let timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                                    el.innerHTML = '<span style="color: var(--text-muted);">Last seen ' + timeStr + '</span>';
-                                } else {
-                                    el.innerHTML = '';
-                                }
-                            }
-                        }).catch(function() {});
-                }
-            }
-        }, 30000); // 30 seconds
 
     </script>
 
