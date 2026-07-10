@@ -419,12 +419,55 @@ public class ChatController {
 
     @PostMapping("/logout")
     public org.springframework.http.ResponseEntity<Void> logoutUser(HttpServletResponse response) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getName() != null && !auth.getName().equals("anonymousUser")) {
+            String email = auth.getName();
+            java.util.Optional<com.example.chatapplication.UserStatus> opt = userStatusRepo.findById(email);
+            if (opt.isPresent()) {
+                com.example.chatapplication.UserStatus status = opt.get();
+                status.setIsOnline(false);
+                status.setActiveConnections(0);
+                status.setLastSeen(java.time.LocalDateTime.now());
+                userStatusRepo.save(status);
+
+                // Broadcast offline status to friends
+                java.util.Map<String, Object> statusMsg = new java.util.HashMap<>();
+                statusMsg.put("email", email);
+                statusMsg.put("online", false);
+                statusMsg.put("lastSeen", status.getLastSeen().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+                messagingTemplate.convertAndSend("/topic/status", (Object) statusMsg);
+            }
+        }
+
         Cookie cookie = new Cookie("jwt", "");
         cookie.setHttpOnly(true);
         cookie.setPath("/");
         cookie.setMaxAge(0);
         response.addCookie(cookie);
         return org.springframework.http.ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/api/users/status")
+    @ResponseBody
+    public java.util.Map<String, java.util.Map<String, Object>> getUsersStatuses(@RequestBody java.util.List<String> emails) {
+        java.util.Map<String, java.util.Map<String, Object>> result = new java.util.HashMap<>();
+        if (emails != null) {
+            for (String email : emails) {
+                java.util.Map<String, Object> statusMap = new java.util.HashMap<>();
+                java.util.Optional<com.example.chatapplication.UserStatus> status = userStatusRepo.findById(email);
+                if (status.isPresent()) {
+                    statusMap.put("isOnline", status.get().getIsOnline());
+                    statusMap.put("lastSeen", status.get().getLastSeen() != null
+                            ? status.get().getLastSeen().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                            : null);
+                } else {
+                    statusMap.put("isOnline", false);
+                    statusMap.put("lastSeen", null);
+                }
+                result.put(email, statusMap);
+            }
+        }
+        return result;
     }
 
     @PostMapping("/api/chat/message/delete")
