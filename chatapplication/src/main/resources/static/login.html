@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Login</title>
+    <link rel="stylesheet" href="theme.css">
+    <style>
+        .container {
+            text-align: center;
+        }
+        form {
+            text-align: left;
+        }
+        .app-logo {
+            font-size: 38px;
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+        .app-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="app-logo">&#10024; ChatApp</div>
+        <p class="app-subtitle">Sign in to continue</p>
+
+        <form action="/loginpage" method="post">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="user_name" placeholder="Enter your username" required>
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="passowrd" placeholder="Enter your password" required>
+
+            <button type="submit">Sign In</button>
+        </form>
+
+        <div class="error" id="errorMessage"></div>
+
+        <div class="signup">
+            Don't have an account?
+            <a href="sign_up.html">Create one</a>
+        </div>
+
+        <div style="margin-top: 12px;">
+            <a href="forgetpassword.html" style="color: var(--text-muted); font-size: 13px; text-decoration: none;">Forgot password?</a>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const error = params.get("error");
+        const success = params.get("success");
+        if (error) {
+            document.getElementById("errorMessage").innerText = error;
+            document.getElementById("errorMessage").style.display = 'block';
+        }
+        if (success) {
+            document.getElementById("errorMessage").innerText = success;
+            document.getElementById("errorMessage").style.color = 'var(--success)';
+            document.getElementById("errorMessage").style.background = 'var(--success-light)';
+            document.getElementById("errorMessage").style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

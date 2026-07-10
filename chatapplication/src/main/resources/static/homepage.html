@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+
+    <link rel="stylesheet" href="theme.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .tick { font-size: 13px; margin-left: 4px; vertical-align: middle; }
+        .tick.sent { color: var(--text-muted); }
+        .tick.delivered { color: var(--text-muted); }
+        .tick.read { color: #3ecf8e; }
+        .settings-btn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            width: auto;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+        .settings-btn:hover {
+            background: var(--bg-color);
+            transform: none;
+        }
+        .settings-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 40px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 6px;
+            width: 180px;
+            z-index: 1000;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        .settings-menu button {
+            width: 100%;
+            margin-bottom: 2px;
+            padding: 10px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            cursor: pointer;
+            text-align: left;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .settings-menu button:hover {
+            background: var(--bg-color);
+            transform: none;
+        }
+        .settings-menu .danger-btn {
+            color: var(--danger);
+        }
+        .settings-menu .danger-btn:hover {
+            background: var(--danger-light);
+        }
+        .media-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            padding: 0;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .media-btn:hover {
+            background: var(--bg-color);
+            border-color: var(--text-muted);
+            transform: none;
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            animation: fadeInUp 0.5s ease;
+        }
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+        .empty-state p {
+            font-size: 15px;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 8px 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            font-style: italic;
+            animation: fadeInUp 0.3s ease;
+        }
+        .typing-indicator span {
+            display: inline-block;
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        .chat-msg {
+            animation: fadeInUp 0.3s ease;
+        }
+        .user {
+            transition: all 0.2s ease;
+        }
+        .user:active {
+            transform: scale(0.97);
+        }
+        .online-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--whatsapp-green);
+            border: 2px solid var(--card-bg);
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            display: none;
+        }
+        .profile-wrapper {
+            position: relative;
+            display: inline-block;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        #chatMessage:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(91, 106, 191, 0.15);
+        }
+        .nav-greeting {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+        @media (max-width: 768px) {
+            .empty-state .icon { font-size: 48px; }
+            .search-toggle-btn { display: flex !important; }
+            .search-box .search-toggle-btn {
+                background: none; border: none; font-size: 18px; cursor: pointer;
+                color: var(--text-secondary); padding: 6px; border-radius: 50%; width: 36px; height: 36px;
+                align-items: center; justify-content: center; transition: all 0.2s;
+            }
+            .search-box .search-toggle-btn:hover {
+                background: var(--bg-color); transform: none;
+            }
+            .search-box.mobile-expanded input { display: block !important; }
+            .search-box.mobile-expanded .search-toggle-btn { display: none !important; }
+            .search-box input { display: none; }
+            .search-box.mobile-expanded {
+                position: fixed; top: 8px; left: 8px; right: 8px; z-index: 1000;
+                background: var(--card-bg); padding: 8px; border-radius: var(--radius-md);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            }
+            .search-box.mobile-expanded input {
+                width: 100%; margin: 0; font-size: 16px;
+            }
+            .notifications a svg { width: 26px; height: 26px; }
+        }
+    </style>
+
+</head>
+
+<body class="homepage-layout">
+
+    <!-- Navbar -->
+    <div class="navbar">
+        <div class="user-name" id="currentUserName">
+            Loading...
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="notifications" style="position: relative;">
+                <a href="notifications.html" style="text-decoration: none; color: inherit; position: relative; display: flex;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-secondary);">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                    <span id="notifBadge"
+                        style="background:var(--primary-gradient); color:white; border-radius:50%; padding:0; width:20px; height:20px; font-size:10px; display:none; position:absolute; top:-8px; right:-10px; line-height:20px; text-align:center; font-weight:700; border:2px solid var(--navbar-bg);">0</span>
+                </a>
+            </div>
+
+            <div class="search-box">
+                <button id="mobileSearchToggle" class="search-toggle-btn" onclick="toggleMobileSearch()" style="display:none;">&#128269;</button>
+                <input type="text" id="navbarSearchInput" placeholder="Search users..." onkeyup="navbarSearchUser()">
+            </div>
+        </div>
+    </div>
+
+    <div class="main">
+
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <div class="tabs-container">
+                <button onclick="showTab('users')" id="btnTabUsers" class="tab-btn active">All Users</button>
+                <button onclick="showTab('friends')" id="btnTabFriends" class="tab-btn">Friends</button>
+                <button onclick="window.location.href='notifications.html'" id="btnTabNotifs" class="tab-btn" style="position: relative; display: none;">
+                    🔔
+                    <span id="mobileNotifBadge" style="background:var(--danger); color:white; border-radius:50%; padding:0; width:16px; height:16px; font-size:10px; position:absolute; top:2px; right:20%; line-height:16px; text-align:center; font-weight:700; display:none;">0</span>
+                </button>
+            </div>
+
+            <div id="usersTab">
+                <div class="search">
+                    <input type="text" id="searchInput" placeholder="Search by name or email..." onkeyup="searchUser()">
+                </div>
+                <div class="user-list" id="userList">
+                    <!-- Users will be populated dynamically from server -->
+                </div>
+            </div>
+
+            <div id="friendsTab" style="display:none;">
+                <div class="user-list" id="friendList">
+                    <!-- Friends will be populated dynamically from server -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel" id="chatPanel">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding:16px 20px; background: var(--card-bg); border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
+                <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                    <button onclick="backToContacts()" class="back-to-contacts">&#8592;</button>
+                    <h2 id="chatHeader" style="margin:0; text-align: left; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Select a friend to start chatting</h2>
+                </div>
+                <div id="chatSettings" style="display:none; position:relative;">
+                    <button onclick="toggleSettingsMenu()" class="settings-btn">&#9881;</button>
+                    <div id="settingsMenu" class="settings-menu">
+                        <button onclick="deleteChat('1DAY')">&#128451; Clear Last 1 Day</button>
+                        <button onclick="deleteChat('7DAYS')">&#128451; Clear Last 7 Days</button>
+                        <button onclick="deleteChat('ALL')" class="danger-btn">&#9888; Delete All</button>
+                    </div>
+                </div>
+            </div>
+            <div id="chatHistory"
+                style="flex:1; overflow-y:auto; padding:20px; display:none; flex-direction:column; gap:10px;">
+                <!-- Chat messages will go here -->
+            </div>
+            <div id="typingIndicator" class="typing-indicator"><span>typing</span><span>.</span><span>.</span><span>.</span></div>
+            <div id="chatInputArea" style="display:none; gap:6px; align-items:center; padding: 10px 14px;">
+                <input type="text" id="chatMessage" placeholder="Type a message..." style="flex:1;"
+                    onkeypress="if(event.key === 'Enter') sendMessage()" autocomplete="off" enterkeyhint="send">
+
+                <input type="file" id="mediaInput" accept="image/*,audio/*,video/*" style="display:none;"
+                    onchange="handleMediaUpload(event)">
+                <button onclick="document.getElementById('mediaInput').click()" class="media-btn" title="Attach file">&#128206;</button>
+                <button onclick="startAudioRecording()" id="micBtn" class="media-btn" title="Voice message">&#127908;</button>
+
+                <button onclick="sendMessage()" id="sendBtn" style="width:auto; padding:10px 20px; background: var(--primary); color: white; border: none; border-radius: 24px; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap;">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        function esc(str) {
+            if (!str) return '';
+            return String(str).replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function sendFriendRequest(receiverEmail, btnElement) {
+            if (btnElement) {
+                btnElement.disabled = true;
+                btnElement.innerText = "Sending...";
+            }
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/request.send', {}, JSON.stringify({ receiverEmail: receiverEmail }));
+                if (btnElement) btnElement.innerText = "Sent";
+            } else {
+                alert('WebSocket not connected. Please try again.');
+                if (btnElement) {
+                    btnElement.disabled = false;
+                    btnElement.innerText = "Add Friend";
+                }
+            }
+        }
+
+        function updateNotificationBadge() {
+            fetch('/api/request/pending')
+                .then(res => res.json())
+                .then(data => {
+                    let badge = document.getElementById('notifBadge');
+                    let mobileBadge = document.getElementById('mobileNotifBadge');
+                    if (data && data.length > 0) {
+                        if (badge) { badge.innerText = data.length; badge.style.display = 'inline-block'; }
+                        if (mobileBadge) { mobileBadge.innerText = data.length; mobileBadge.style.display = 'inline-block'; }
+                    } else {
+                        if (badge) badge.style.display = 'none';
+                        if (mobileBadge) mobileBadge.style.display = 'none';
+                    }
+                })
+                .catch(err => console.error(err));
+        }
+
+        function toggleMobileSearch() {
+            let box = document.querySelector('.search-box');
+            box.classList.toggle('mobile-expanded');
+            if (box.classList.contains('mobile-expanded')) {
+                setTimeout(function() {
+                    document.getElementById('navbarSearchInput').focus();
+                }, 100);
+            } else {
+                document.getElementById('navbarSearchInput').value = '';
+                navbarSearchUser();
+            }
+        }
+        // Close mobile search when clicking outside
+        document.addEventListener('click', function(e) {
+            let box = document.querySelector('.search-box');
+            if (box && box.classList.contains('mobile-expanded') && !box.contains(e.target)) {
+                box.classList.remove('mobile-expanded');
+                document.getElementById('navbarSearchInput').value = '';
+                navbarSearchUser();
+                // Also update notification badge count
+                updateNotificationBadge();
+            }
+        });
+
+        function searchUser() {
+            let input = document.getElementById("searchInput").value.toLowerCase();
+            let usersTab = document.getElementById("usersTab");
+            let users = usersTab.getElementsByClassName("user");
+
+            for (let i = 0; i < users.length; i++) {
+                let email = users[i].getElementsByTagName("p")[0].innerText.toLowerCase();
+                let name = users[i].getElementsByTagName("h3")[0].innerText.toLowerCase();
+
+                if (email.indexOf(input) > -1 || name.indexOf(input) > -1) {
+                    users[i].style.display = "flex";
+                } else {
+                    users[i].style.display = "none";
+                }
+            }
+        }
+
+        let currentUserEmail = null;
+        let currentUsername = null;
+        let currentChatConnectionId = null;
+        let currentFriendEmail = null;
+        let stompClient = null;
+        let currentSubscription = null;
+        let pendingSentIds = [];
+        let sendCounter = 0;
+
+        function navbarSearchUser() {
+            let query = document.getElementById('navbarSearchInput').value.trim();
+            showTab('users');
+            
+            let url = query === "" ? '/active-users' : '/api/users/search?query=' + encodeURIComponent(query);
+            
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    let userList = document.getElementById("userList");
+                    userList.innerHTML = '';
+                    let addedUsers = 0;
+                    let statusPromises = [];
+                    data.forEach(user => {
+                        let email = user.useremail || 'No email';
+                        if (email !== 'No email' && email !== currentUserEmail) {
+                            statusPromises.push(
+                                fetch('/api/user/status/' + encodeURIComponent(email))
+                                    .then(res => res.json())
+                                    .then(s => ({ email, isOnline: s.isOnline }))
+                                    .catch(() => ({ email, isOnline: false }))
+                            );
+                        }
+                    });
+                    Promise.all(statusPromises).then(statuses => {
+                        let statusMap = {};
+                        statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
+                        data.forEach(user => {
+                            let username = user.username || 'Unknown';
+                            let email = user.useremail || 'No email';
+                            
+                            if (email !== 'No email' && email === currentUserEmail) return;
+                            if (currentUsername && username !== 'Unknown' && username === currentUsername) return;
+                            if (username === currentUserEmail) return;
+
+                            addedUsers++;
+                            let profileInitial = username.charAt(0).toUpperCase();
+                            let isOnline = statusMap[email] || false;
+                            let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
+
+                            let userHtml = `
+                                <div class="user" data-email="${esc(email)}">
+                                    <div style="display:flex; align-items:center; flex:1; min-width:0;">
+                                        <div class="profile-wrapper">
+                                            <div class="profile" style="background: ${isOnline ? '' : 'var(--text-muted)'}">${esc(username)}</div>
+                                            <span class="online-dot" style="display: block; background: ${statusColor};"></span>
+                                        </div>
+                                        <div class="details">
+                                            <h3>${esc(username)}</h3>
+                                            <p class="status-text" style="color: ${statusColor}; font-size: 11px;">${isOnline ? 'online' : 'offline'}</p>
+                                        </div>
+                                    </div>
+                                    <button id="addBtn-${esc(email)}" onclick="sendFriendRequest('${esc(email)}', this)" class="add-friend-btn">Add Friend</button>
+                                </div>
+                            `;
+                            userList.innerHTML += userHtml;
+                        });
+                        if (addedUsers === 0) {
+                            userList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No users found matching your search.</p>';
+                        }
+                    });
+                })
+                .catch(err => console.error('Error in search:', err));
+        }
+
+        function updateUserStatusUI(email, isOnline, lastSeen) {
+            let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
+            let statusText = isOnline ? 'online' : 'offline';
+
+            // Update All Users tab items
+            document.querySelectorAll('#userList .user[data-email]').forEach(function(el) {
+                if (el.getAttribute('data-email') === email) {
+                    let dot = el.querySelector('.online-dot');
+                    let statusP = el.querySelector('p.status-text');
+                    let avatar = el.querySelector('.profile');
+                    if (dot) {
+                        dot.style.background = statusColor;
+                        dot.style.display = 'block';
+                    }
+                    if (statusP) {
+                        statusP.innerText = statusText;
+                        statusP.style.color = statusColor;
+                    }
+                    if (avatar) {
+                        avatar.style.background = isOnline ? '' : 'var(--text-muted)';
+                    }
+                }
+            });
+
+            // Update friend list items
+            document.querySelectorAll('#friendList .user[data-email]').forEach(function(el) {
+                if (el.getAttribute('data-email') === email) {
+                    let dot = el.querySelector('.online-dot');
+                    let statusP = el.querySelector('p.status-text');
+                    let avatar = el.querySelector('.profile');
+                    if (dot) {
+                        dot.style.background = statusColor;
+                        dot.style.display = 'block';
+                    }
+                    if (statusP) {
+                        statusP.innerText = statusText;
+                        statusP.style.color = statusColor;
+                    }
+                    if (avatar) {
+                        avatar.style.background = isOnline ? '' : 'var(--text-muted)';
+                    }
+                }
+            });
+
+            // Update current chat header if chatting with this user
+            if (currentFriendEmail === email) {
+                let el = document.getElementById('friendStatus');
+                if (el) {
+                    if (isOnline) {
+                        el.innerHTML = '<span style="color: var(--whatsapp-green); font-weight: 600;">Online</span>';
+                    } else if (lastSeen) {
+                        let d = new Date(lastSeen);
+                        let timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                        el.innerHTML = '<span style="color: var(--text-muted);">Last seen ' + timeStr + '</span>';
+                    } else {
+                        el.innerHTML = '';
+                    }
+                }
+            }
+        }
+
+        function showToast(message, type) {
+            let existing = document.querySelector('.toast-notification');
+            if (existing) existing.remove();
+            let toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.style.cssText = 'position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--card-bg); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px 20px; box-shadow:0 8px 32px rgba(0,0,0,0.12); z-index:9999; font-size:14px; font-weight:500; color:var(--text-main); display:flex; align-items:center; gap:10px; animation:fadeInUp 0.3s ease; max-width:90%;';
+            let icon = type === 'success' ? '&#10003;' : type === 'request' ? '&#128276;' : '&#8505;';
+            toast.innerHTML = '<span style="font-size:18px;">' + icon + '</span><span>' + message + '</span>';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() { toast.remove(); }, 300); }, 4000);
+        }
+
+        let audioCtx = null;
+
+        function initAudioOnUserClick() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            console.log('AudioContext created for notifications');
+        }
+
+        function playNotificationSound() {
+            try {
+                if (!audioCtx) return;
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume().then(function() { doPlayNotificationSound(audioCtx); });
+                } else {
+                    doPlayNotificationSound(audioCtx);
+                }
+            } catch(e) { console.warn('Sound error:', e); }
+        }
+
+        function doPlayNotificationSound(ctx) {
+            try {
+                let now = ctx.currentTime;
+                let notes = [523.25, 659.25, 783.99];
+                let duration = 0.12;
+                notes.forEach(function(freq, i) {
+                    let osc = ctx.createOscillator();
+                    let gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.3, now + i * duration);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * duration + 0.25);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + i * duration);
+                    osc.stop(now + i * duration + 0.25);
+                });
+            } catch(e) { console.warn('Play sound error:', e); }
+        }
+
+        function playRequestSound() {
+            try {
+                if (!audioCtx) return;
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume().then(function() { doPlayRequestSound(audioCtx); });
+                } else {
+                    doPlayRequestSound(audioCtx);
+                }
+            } catch(e) { console.warn('Sound error:', e); }
+        }
+
+        function doPlayRequestSound(ctx) {
+            try {
+                let now = ctx.currentTime;
+                let osc = ctx.createOscillator();
+                let gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.setValueAtTime(660, now + 0.15);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } catch(e) { console.warn('Play sound error:', e); }
+        }
+
+        function shouldPlaySound() {
+            return true;
+        }
+
+        let notifSubscription = null;
+        let friendsSubscription = null;
+        let requestConfirmSubscription = null;
+
+        function subscribeToNotifications() {
+            if (stompClient && stompClient.connected && currentUserEmail) {
+                if (notifSubscription) {
+                    notifSubscription.unsubscribe();
+                }
+                notifSubscription = stompClient.subscribe('/topic/notifications/' + currentUserEmail, function (payload) {
+                    let data = JSON.parse(payload.body);
+                    if (data.type === 'FRIEND_REQUEST') {
+                        updateNotificationBadge();
+                        showToast('New friend request from ' + data.senderEmail, 'request');
+                        if (shouldPlaySound()) playRequestSound();
+                    } else if (data.type === 'REQUEST_ACCEPTED') {
+                        loadFriends();
+                        showToast('Your friend request was accepted!', 'success');
+                        if (shouldPlaySound()) playNotificationSound();
+                    } else if (data.type === 'NEW_MESSAGE') {
+                        if (data.connectionId !== currentChatConnectionId) {
+                            showToast('New message from ' + data.sender, 'message');
+                            if (shouldPlaySound()) playNotificationSound();
+                        }
+                    }
+                });
+            }
+        }
+
+        function subscribeToFriendList() {
+            if (stompClient && stompClient.connected && currentUserEmail) {
+                if (friendsSubscription) {
+                    friendsSubscription.unsubscribe();
+                }
+                friendsSubscription = stompClient.subscribe('/topic/friends/' + currentUserEmail, function (payload) {
+                    loadFriends();
+                });
+            }
+        }
+
+        function subscribeToRequestConfirm() {
+            if (stompClient && stompClient.connected && currentUserEmail) {
+                if (requestConfirmSubscription) {
+                    requestConfirmSubscription.unsubscribe();
+                }
+                requestConfirmSubscription = stompClient.subscribe('/topic/request.confirm/' + currentUserEmail, function (payload) {
+                    let data = JSON.parse(payload.body);
+                    if (data.type === 'REQUEST_CONFIRM') {
+                        if (data.status === 'SUCCESS') {
+                            showToast(data.message || 'Success!', 'success');
+                        } else {
+                            showToast(data.message || 'Failed!', 'error');
+                        }
+                    }
+                });
+            }
+        }
+
+        function connectWebSocket() {
+            let socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null;
+            stompClient.heartbeat.outgoing = 10000;
+            stompClient.heartbeat.incoming = 10000;
+            stompClient.connect({}, function (frame) {
+                console.log('Connected to WebSocket STOMP');
+
+                // Subscribe to real-time status updates
+                stompClient.subscribe('/topic/status', function (payload) {
+                    let data = JSON.parse(payload.body);
+                    updateUserStatusUI(data.email, data.online, data.lastSeen);
+                });
+
+                subscribeToNotifications();
+                subscribeToFriendList();
+                subscribeToRequestConfirm();
+
+                if (currentChatConnectionId) {
+                    subscribeToChat(currentChatConnectionId);
+                }
+            }, function (error) {
+                console.error('WebSocket Error: ', error);
+                setTimeout(connectWebSocket, 5000);
+            });
+        }
+
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                if (!stompClient || !stompClient.connected) {
+                    connectWebSocket();
+                }
+            }
+        });
+
+        function subscribeToChat(connectionId) {
+            if (currentSubscription) {
+                currentSubscription.unsubscribe();
+            }
+            if (stompClient && stompClient.connected) {
+                currentSubscription = stompClient.subscribe('/topic/chat/' + connectionId, function (payload) {
+                    let data = JSON.parse(payload.body);
+                    if (data.type === 'DELIVERY_RECEIPT') {
+                        handleDeliveryReceipt(data);
+                    } else if (data.type === 'READ_RECEIPT') {
+                        handleReadReceipt(data);
+                    } else if (data.type === 'MESSAGE_SAVED') {
+                        let msgEl = document.querySelector('[data-message-id="-1"]');
+                        if (msgEl && msgEl.closest('#chatHistory')) {
+                            msgEl.setAttribute('data-message-id', data.realId);
+                            let tick = msgEl.querySelector('.tick');
+                            if (tick && data.isDelivered) {
+                                tick.className = 'tick delivered';
+                                tick.innerHTML = '&#10003;&#10003;';
+                            }
+                        }
+                    } else if (data.sender === currentUserEmail && pendingSentIds.length > 0) {
+                        let localId = pendingSentIds.shift();
+                        let msgEl = document.querySelector('[data-message-id="' + localId + '"]');
+                        if (msgEl) {
+                            msgEl.setAttribute('data-message-id', data.id && data.id !== -1 ? data.id : localId);
+                            let tick = msgEl.querySelector('.tick');
+                            if (tick && data.isDelivered) {
+                                tick.className = 'tick delivered';
+                                tick.innerHTML = '&#10003;&#10003;';
+                            }
+                        }
+                    } else if (data.sender !== currentUserEmail) {
+                        appendMessageToChat(data);
+                        if (stompClient && stompClient.connected) {
+                            stompClient.send('/app/chat.read', {}, JSON.stringify({ connectionId: connectionId }));
+                        }
+                        if (shouldPlaySound()) playNotificationSound();
+                    }
+                });
+            }
+        }
+
+        function handleDeliveryReceipt(data) {
+            if (data.messageId) {
+                let msgEl = document.querySelector('[data-message-id="' + data.messageId + '"]');
+                if (msgEl) {
+                    let tick = msgEl.querySelector('.tick');
+                    if (tick) {
+                        tick.className = 'tick delivered';
+                        tick.innerHTML = '&#10003;&#10003;';
+                    }
+                }
+            } else {
+                loadChatHistory();
+            }
+        }
+
+        function handleReadReceipt(data) {
+            if (data.connectionId) {
+                let ticks = document.querySelectorAll('.chat-msg.me .tick');
+                ticks.forEach(function(t) {
+                    t.className = 'tick read';
+                    t.innerHTML = '&#10003;&#10003;';
+                });
+            }
+        }
+
+        function showTab(tab) {
+            let btnUsers = document.getElementById('btnTabUsers');
+            let btnFriends = document.getElementById('btnTabFriends');
+
+            if (tab === 'users') {
+                document.getElementById('usersTab').style.display = 'block';
+                document.getElementById('friendsTab').style.display = 'none';
+                btnUsers.classList.add('active');
+                btnFriends.classList.remove('active');
+            } else {
+                document.getElementById('usersTab').style.display = 'none';
+                document.getElementById('friendsTab').style.display = 'block';
+                btnUsers.classList.remove('active');
+                btnFriends.classList.add('active');
+            }
+        }
+
+        function loadFriends() {
+            fetch('/api/friends')
+                .then(res => res.json())
+                .then(data => {
+                    let friendList = document.getElementById("friendList");
+                    friendList.innerHTML = '';
+                    if (data.length === 0) {
+                        friendList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No friends yet. Add friends to start chatting.</p>';
+                        return;
+                    }
+                    let statusPromises = [];
+                    data.forEach(conn => {
+                        let friendEmail = conn.user1Email === currentUserEmail ? conn.user2Email : conn.user1Email;
+                        statusPromises.push(
+                            fetch('/api/user/status/' + encodeURIComponent(friendEmail))
+                                .then(res => res.json())
+                                .then(status => ({ email: friendEmail, isOnline: status.isOnline }))
+                                .catch(() => ({ email: friendEmail, isOnline: false }))
+                        );
+                    });
+                    Promise.all(statusPromises).then(statuses => {
+                        let statusMap = {};
+                        statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
+                        data.forEach(conn => {
+                            let friendEmail = conn.user1Email === currentUserEmail ? conn.user2Email : conn.user1Email;
+                            let isOnline = statusMap[friendEmail] || false;
+                            let profileInitial = friendEmail.charAt(0).toUpperCase();
+                            let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
+                            let statusText = isOnline ? 'online' : 'offline';
+
+                            let friendHtml = `
+                                <div class="user" onclick="openChat(${conn.id}, '${esc(friendEmail)}')" data-email="${esc(friendEmail)}">
+                                    <div class="profile-wrapper">
+                                        <div class="profile" style="background: ${isOnline ? '' : 'var(--text-muted)'}">${esc(profileInitial)}</div>
+                                        <span class="online-dot" style="display: block; background: ${statusColor};"></span>
+                                    </div>
+                                    <div class="details">
+                                        <h3>${esc(friendEmail.split('@')[0])}</h3>
+                                        <p class="status-text" style="color: ${statusColor}; font-size: 11px;">${statusText}</p>
+                                    </div>
+                                </div>
+                            `;
+                            friendList.innerHTML += friendHtml;
+                        });
+                    });
+                });
+        }
+
+        function isMobile() {
+            return window.innerWidth <= 768;
+        }
+
+        function backToContacts() {
+            if (isMobile()) {
+                document.querySelector('.left-panel').classList.remove('hidden-mobile');
+                document.querySelector('.right-panel').classList.remove('visible-mobile');
+            }
+        }
+
+        function openChat(connectionId, friendEmail) {
+            currentChatConnectionId = connectionId;
+            currentFriendEmail = friendEmail;
+            document.getElementById('chatHeader').innerHTML = friendEmail.split('@')[0] + ' <span id="friendStatus" style="font-size:13px; font-weight:normal; color: var(--text-secondary);"></span>';
+            document.getElementById('chatHistory').style.display = 'flex';
+            document.getElementById('chatInputArea').style.display = 'flex';
+            document.getElementById('chatSettings').style.display = 'block';
+
+            if (isMobile()) {
+                document.querySelector('.left-panel').classList.add('hidden-mobile');
+                document.querySelector('.right-panel').classList.add('visible-mobile');
+            }
+
+            // Auto-focus input to open keyboard on mobile
+            setTimeout(function() {
+                document.getElementById('chatMessage').focus();
+            }, 300);
+
+            fetch('/api/user/status/' + encodeURIComponent(friendEmail))
+                .then(res => res.json())
+                .then(status => {
+                    let el = document.getElementById('friendStatus');
+                    if (status.isOnline) {
+                        el.innerHTML = '<span style="color: var(--whatsapp-green);">Online</span>';
+                    } else if (status.lastSeen) {
+                        let d = new Date(status.lastSeen);
+                        let timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                        el.innerHTML = '<span style="color: var(--text-muted);">Last seen ' + timeStr + '</span>';
+                    } else {
+                        el.innerHTML = '';
+                    }
+                })
+                .catch(function() { document.getElementById('friendStatus').innerHTML = ''; });
+
+            loadChatHistory();
+            subscribeToChat(connectionId);
+        }
+
+        function toggleSettingsMenu() {
+            let menu = document.getElementById('settingsMenu');
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function deleteChat(timeframe) {
+            if (!currentChatConnectionId) return;
+            let label = timeframe === '1DAY' ? 'Clear Last 1 Day' : timeframe === '7DAYS' ? 'Clear Last 7 Days' : 'Delete All';
+            if (confirm(label + ' — are you sure?')) {
+                fetch('/api/chat/delete?connectionId=' + currentChatConnectionId + '&timeframe=' + timeframe, { method: 'POST' })
+                    .then(res => {
+                        if (res.ok) {
+                            toggleSettingsMenu();
+                            loadChatHistory();
+                        } else {
+                            alert('Failed to clear chat.');
+                        }
+                    });
+            }
+        }
+
+        function appendMessageToChat(msg) {
+            let historyDiv = document.getElementById('chatHistory');
+
+            let isMe = msg.sender === currentUserEmail;
+            let msgClass = isMe ? 'me' : 'them';
+            let align = isMe ? 'flex-end' : 'flex-start';
+
+            let mediaContent = '';
+            if (msg.messageType === 'IMAGE' && msg.mediaData) {
+                mediaContent = `<img src="${msg.mediaData}" onerror="this.onerror=null; this.src=''; this.alt='[Image missing]';" style="max-width:280px; max-height:300px; object-fit:contain; border-radius:8px; margin-top:6px;"/>`;
+            } else if (msg.messageType === 'AUDIO' && msg.mediaData) {
+                mediaContent = `<audio controls src="${msg.mediaData}" onerror="this.onerror=null; this.parentElement.innerHTML += '<br><small style=\\'color:var(--danger)\\'>[Audio missing]</small>';" style="max-width:250px; margin-top:6px;"></audio>`;
+            } else if (msg.messageType === 'VIDEO' && msg.mediaData) {
+                mediaContent = `<video controls src="${msg.mediaData}" style="max-width:280px; border-radius:8px; margin-top:6px;"></video>`;
+            }
+
+            let timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+            let tickHtml = '';
+            if (isMe) {
+                if (msg.isDelivered) {
+                    tickHtml = '<span class="tick delivered">&#10003;&#10003;</span>';
+                } else {
+                    tickHtml = '<span class="tick sent">&#10003;</span>';
+                }
+            }
+
+            let msgIdAttr = msg.id ? 'data-message-id="' + msg.id + '"' : '';
+
+            historyDiv.innerHTML += `
+                <div class="chat-msg ${msgClass}" style="align-self: ${align};" ${msgIdAttr}>
+                    <div class="chat-time">${esc(msg.senderName || msg.sender)} - ${esc(timestamp)}</div>
+                    <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px;">
+                        <span>${esc(msg.message)}</span>
+                        ${tickHtml}
+                    </div>
+                    ${mediaContent}
+                </div>
+            `;
+
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        }
+
+        let chatPage = 0;
+        let hasMoreMessages = true;
+
+        function loadChatHistory() {
+            chatPage = 0;
+            hasMoreMessages = true;
+            fetchChatPage(0, true);
+        }
+
+        function loadOlderMessages() {
+            if (!hasMoreMessages || !currentChatConnectionId) return;
+            chatPage++;
+            fetchChatPage(chatPage, false);
+        }
+
+        function fetchChatPage(page, replace) {
+            if (!currentChatConnectionId) return;
+            fetch('/api/chat/history?connectionId=' + currentChatConnectionId + '&page=' + page)
+                .then(res => res.json())
+                .then(data => {
+                    let historyDiv = document.getElementById('chatHistory');
+
+                    if (data.length < 50) {
+                        hasMoreMessages = false;
+                    }
+
+                    let loadMoreBtn = document.getElementById('loadMoreBtn');
+                    if (loadMoreBtn) loadMoreBtn.remove();
+
+                    if (replace) {
+                        historyDiv.innerHTML = '';
+                        data.forEach(function(msg) {
+                            appendMessageToChat(msg);
+                        });
+                        if (hasMoreMessages) {
+                            let btn = document.createElement('div');
+                            btn.id = 'loadMoreBtn';
+                            btn.style.cssText = 'text-align:center; padding:8px;';
+                            btn.innerHTML = '<button onclick="loadOlderMessages()" style="width:auto; padding:8px 20px; background:var(--primary-light); color:var(--primary); border:none; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer;">Load older messages</button>';
+                            historyDiv.prepend(btn);
+                        }
+                    } else if (data.length > 0) {
+                        let firstChild = historyDiv.firstChild;
+                        data.forEach(function(msg) {
+                            let wrapper = document.createElement('div');
+                            wrapper.innerHTML = createMessageHtml(msg);
+                            historyDiv.insertBefore(wrapper.firstElementChild, firstChild);
+                        });
+                    }
+
+                    historyDiv.scrollTop = historyDiv.scrollHeight;
+                });
+        }
+
+        function createMessageHtml(msg) {
+            let isMe = msg.sender === currentUserEmail;
+            let msgClass = isMe ? 'me' : 'them';
+            let align = isMe ? 'flex-end' : 'flex-start';
+
+            let mediaContent = '';
+            if (msg.messageType === 'IMAGE' && msg.mediaData) {
+                mediaContent = '<img src="' + msg.mediaData + '" onerror="this.onerror=null; this.src=\'\'; this.alt=\'[Image missing]\';" style="max-width:280px; max-height:300px; object-fit:contain; border-radius:8px; margin-top:6px;"/>';
+            } else if (msg.messageType === 'AUDIO' && msg.mediaData) {
+                mediaContent = '<audio controls src="' + msg.mediaData + '" style="max-width:250px; margin-top:6px;"></audio>';
+            } else if (msg.messageType === 'VIDEO' && msg.mediaData) {
+                mediaContent = '<video controls src="' + msg.mediaData + '" style="max-width:280px; border-radius:8px; margin-top:6px;"></video>';
+            }
+
+            let timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+            let tickHtml = '';
+            if (isMe) {
+                tickHtml = msg.isDelivered ? '<span class="tick delivered">&#10003;&#10003;</span>' : '<span class="tick sent">&#10003;</span>';
+            }
+
+            let msgIdAttr = msg.id ? 'data-message-id="' + msg.id + '"' : '';
+
+            return '<div class="chat-msg ' + msgClass + '" style="align-self: ' + align + ';" ' + msgIdAttr + '>' +
+                '<div class="chat-time">' + esc(msg.senderName || msg.sender) + ' - ' + esc(timestamp) + '</div>' +
+                '<div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px;"><span>' + esc(msg.message || '') + '</span>' + tickHtml + '</div>' +
+                mediaContent +
+                '</div>';
+        }
+
+        let isSending = false;
+
+        function sendMessage() {
+            if (isSending) return;
+            let input = document.getElementById('chatMessage');
+            let msg = input.value.trim();
+            if (!msg || !currentChatConnectionId) return;
+
+            if (stompClient && stompClient.connected) {
+                isSending = true;
+                let sendBtn = document.getElementById('sendBtn');
+                sendBtn.disabled = true;
+
+                let localId = 'send_' + (++sendCounter);
+                pendingSentIds.push(localId);
+
+                appendMessageToChat({
+                    id: localId,
+                    sender: currentUserEmail,
+                    senderName: currentUsername || currentUserEmail,
+                    message: msg,
+                    messageType: 'TEXT',
+                    timestamp: new Date().toISOString(),
+                    isDelivered: false
+                });
+
+                let payload = {
+                    connectionId: currentChatConnectionId,
+                    message: msg,
+                    messageType: 'TEXT'
+                };
+                stompClient.send('/app/chat.send', {}, JSON.stringify(payload));
+                input.value = '';
+
+                setTimeout(function() {
+                    isSending = false;
+                    sendBtn.disabled = false;
+                }, 200);
+            } else {
+                alert('WebSocket is not connected. Please try again later.');
+            }
+        }
+
+        function compressImage(file, quality, callback) {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = function (event) {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = function () {
+                    const MAX_WIDTH = 1280;
+                    const MAX_HEIGHT = 1280;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height = Math.round(height * (MAX_WIDTH / width));
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width = Math.round(width * (MAX_HEIGHT / height));
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob(function (blob) {
+                        callback(blob, file.name);
+                    }, 'image/jpeg', quality);
+                };
+            };
+        }
+
+        function sendFileToBackend(fileBlob, messageType, fileName) {
+            let loadingMsg = messageType === 'IMAGE' ? 'Sending Image...' :
+                (messageType === 'AUDIO' ? 'Sending Audio...' : 'Sending Video...');
+
+            let formData = new FormData();
+            formData.append('connectionId', currentChatConnectionId);
+
+            if (fileName) {
+                formData.append('file', fileBlob, fileName);
+            } else {
+                formData.append('file', fileBlob);
+            }
+
+            fetch('/api/chat/media/upload', {
+                method: 'POST',
+                body: formData
+            }).then(res => {
+                if (!res.ok) throw new Error('Asset upload failed');
+                return res.json();
+            }).then(data => {
+                if (stompClient && stompClient.connected) {
+                    let localId = 'send_' + (++sendCounter);
+                    pendingSentIds.push(localId);
+
+                    appendMessageToChat({
+                        id: localId,
+                        sender: currentUserEmail,
+                        senderName: currentUsername || currentUserEmail,
+                        message: loadingMsg,
+                        messageType: messageType,
+                        timestamp: new Date().toISOString(),
+                        isDelivered: false
+                    });
+
+                    let payload = {
+                        connectionId: currentChatConnectionId,
+                        message: loadingMsg,
+                        messageType: messageType,
+                        mediaId: data.mediaId
+                    };
+                    stompClient.send('/app/chat.send', {}, JSON.stringify(payload));
+                }
+                document.getElementById('mediaInput').value = "";
+            }).catch(err => {
+                console.error(err);
+                alert('Failed to send media');
+            });
+        }
+
+        function handleMediaUpload(event) {
+            let file = event.target.files[0];
+            if (!file || !currentChatConnectionId) return;
+
+            let messageType = file.type.startsWith('image/') ? 'IMAGE' :
+                (file.type.startsWith('audio/') ? 'AUDIO' :
+                    (file.type.startsWith('video/') ? 'VIDEO' : null));
+            if (!messageType) {
+                alert('Only images, audio, and video files are supported.');
+                return;
+            }
+
+            if (messageType === 'IMAGE') {
+                compressImage(file, 0.7, function (compressedBlob, fileName) {
+                    sendFileToBackend(compressedBlob, messageType, fileName);
+                });
+            } else {
+                sendFileToBackend(file, messageType, file.name);
+            }
+        }
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        function startAudioRecording() {
+            let micBtn = document.getElementById('micBtn');
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                micBtn.style.background = "transparent";
+                micBtn.style.color = "var(--text-secondary)";
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.start();
+                    micBtn.style.background = "var(--danger)";
+                    micBtn.style.color = "white";
+                    micBtn.style.borderColor = "var(--danger)";
+                    audioChunks = [];
+
+                    mediaRecorder.addEventListener("dataavailable", event => {
+                        audioChunks.push(event.data);
+                    });
+
+                    mediaRecorder.addEventListener("stop", () => {
+                        stream.getTracks().forEach(track => track.stop());
+                        let audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+
+                        sendFileToBackend(audioBlob, 'AUDIO', 'voicenote.webm');
+                    });
+                })
+                .catch(err => {
+                    console.error('Microphone access denied', err);
+                    alert('Please allow microphone access to record audio.');
+                });
+        }
+
+        window.onload = function () {
+            document.getElementById('chatInputArea').style.display = 'none';
+            fetch('/api/user/online', { method: 'POST' }).catch(function() {});
+            connectWebSocket();
+            fetch('/api/current-user')
+                .then(res => res.json())
+                .then(userMap => {
+                    if (userMap.email) {
+                        currentUserEmail = userMap.email;
+                        let username = userMap.username ? userMap.username : 'Unknown';
+                        currentUsername = userMap.username;
+                        if (username !== currentUserEmail) {
+                            document.getElementById('currentUserName').innerText = username + ' (' + currentUserEmail + ')';
+                        } else {
+                            document.getElementById('currentUserName').innerText = currentUserEmail;
+                        }
+                        subscribeToNotifications();
+                        subscribeToFriendList();
+                        subscribeToRequestConfirm();
+                    }
+
+                    fetch('/active-users')
+                        .then(response => response.json())
+                        .then(data => {
+                            let userList = document.getElementById("userList");
+                            userList.innerHTML = '';
+
+                            let addedUsers = 0;
+                            let userStatusPromises = [];
+                            data.forEach(user => {
+                                let email = user.useremail || 'No email';
+                                if (email !== 'No email' && email !== currentUserEmail) {
+                                    userStatusPromises.push(
+                                        fetch('/api/user/status/' + encodeURIComponent(email))
+                                            .then(res => res.json())
+                                            .then(s => ({ email: email, isOnline: s.isOnline }))
+                                            .catch(() => ({ email: email, isOnline: false }))
+                                    );
+                                }
+                            });
+                            Promise.all(userStatusPromises).then(statuses => {
+                                let statusMap = {};
+                                statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
+                                data.forEach(user => {
+                                    let username = user.username || 'Unknown';
+                                    let email = user.useremail || 'No email';
+
+                                    if (email !== 'No email' && email === currentUserEmail) return;
+                                    if (userMap.username && username !== 'Unknown' && username === userMap.username) return;
+                                    if (username === currentUserEmail) return;
+
+                                    addedUsers++;
+                                    let profileInitial = username.charAt(0).toUpperCase();
+                                    let isOnline = statusMap[email] || false;
+                                    let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
+
+                                    let userHtml = `
+                                        <div class="user" data-email="${esc(email)}">
+                                            <div style="display:flex; align-items:center; flex:1; min-width:0;">
+                                                <div class="profile-wrapper">
+                                                    <div class="profile" style="background: ${isOnline ? '' : 'var(--text-muted)'}">${esc(profileInitial)}</div>
+                                                    <span class="online-dot" style="display: block; background: ${statusColor};"></span>
+                                                </div>
+                                                <div class="details">
+                                                    <h3>${esc(username)}</h3>
+                                                    <p class="status-text" style="color: ${statusColor}; font-size: 11px;">${isOnline ? 'online' : 'offline'}</p>
+                                                </div>
+                                            </div>
+                                            <button id="addBtn-${esc(email)}" onclick="sendFriendRequest('${esc(email)}', this)" class="add-friend-btn">Add Friend</button>
+                                        </div>
+                                    `;
+                                    userList.innerHTML += userHtml;
+                                });
+
+                                if (addedUsers === 0) {
+                                    userList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No other users available.</p>';
+                                }
+                            });
+                        })
+                        .catch(error => console.error('Error fetching users:', error));
+
+                    updateNotificationBadge();
+                    loadFriends();
+                });
+        };
+
+        document.addEventListener('click', function(e) {
+            if (!audioCtx) {
+                initAudioOnUserClick();
+            }
+            let menu = document.getElementById('settingsMenu');
+            let btn = document.querySelector('.settings-btn');
+            if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        }, true);
+
+    </script>
+
+</body>
+
+</html>

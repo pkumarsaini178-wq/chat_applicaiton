@@ -1,0 +1,424 @@
+package com.example.chatapplication.ResigtrationFolder;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.view.RedirectView;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Cookie;
+import com.example.chatapplication.SecurityConfigration.JwtUntil;
+
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+@RestController
+public class ChatController {
+
+    @Autowired
+    private Chatservicefile chatService;
+
+    @Autowired
+    private com.example.chatapplication.MediaService mediaService;
+
+    @Autowired
+    private JwtUntil jwtUntil;
+
+    @Autowired
+    JavaMailSender javaMailSender;
+
+    @Autowired
+    ChatSinginRepo chatsinginRepo;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @GetMapping("/")
+    public RedirectView redi(HttpServletRequest request) {
+        String token = null;
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if ("jwt".equals(cookie.getName())) {
+                    token = cookie.getValue();
+                    break;
+                }
+            }
+        }
+
+        if (token != null && jwtUntil.Token_is_vailid(token)) {
+            // Token is valid, user is already logged in, redirect to home page
+            return new RedirectView("/homepage.html");
+        }
+        // Token is missing or invalid, redirect to login page
+        return new RedirectView("/login.html");
+    }
+
+    @PostMapping("/loginpage")
+    public RedirectView loginString(@RequestParam String user_name, @RequestParam String passowrd,
+            HttpServletResponse response) {
+        if (user_name != null && passowrd != null) {
+            ChatSingin chatuser = chatService.loginUser(user_name, passowrd);
+            if (chatuser != null) {
+                // Generate JWT token based on user email (or username as fallback)
+                String emailForToken = chatuser.getUseremail();
+                if (emailForToken == null || emailForToken.isEmpty()) {
+                    emailForToken = chatuser.getUsername();
+                }
+                String token = jwtUntil.gunrateToken(emailForToken);
+
+                // Create cookie to store the JWT token for 24 hours
+                Cookie cookie = new Cookie("jwt", token);
+                cookie.setHttpOnly(true); // secure against XSS
+                cookie.setPath("/"); // available across the entire application
+                cookie.setMaxAge(24 * 60 * 60); // 24 hours expiry in seconds
+
+                response.addCookie(cookie);
+
+                return new RedirectView("/homepage.html");
+            }
+        }
+        return new RedirectView("/login.html?error=" + "Username or password is not valid");
+    }
+
+    @PostMapping("/siginpage")
+    public RedirectView singinString(@RequestParam String user_name, @RequestParam String user_email,
+            @RequestParam String passowrd, @RequestParam String current_password) {
+        if (user_email != null && user_name != null && passowrd != null && current_password != null) {
+            if (!passowrd.equals(current_password)) {
+                return new RedirectView("/sign_up.html?error=" + "Passwords do not match");
+            }
+            ChatSingin datasave = new ChatSingin();
+            datasave.setUsername(user_name);
+            datasave.setUseremail(user_email);
+            datasave.setPassword(passwordEncoder.encode(passowrd));
+            datasave.setCurrentpassword(passwordEncoder.encode(current_password));
+            chatService.registerUser(datasave);
+            return new RedirectView("/login.html");
+        } else {
+            return new RedirectView("/sign_up.html?error=" + "All fields are required");
+        }
+    }
+
+    private static class OtpEntry {
+        String otp;
+        LocalDateTime createdAt;
+        OtpEntry(String otp) { this.otp = otp; this.createdAt = LocalDateTime.now(); }
+        boolean isExpired() { return LocalDateTime.now().isAfter(createdAt.plusMinutes(10)); }
+    }
+    private final Map<String, OtpEntry> otpStore = new ConcurrentHashMap<>();
+
+    @GetMapping("/forgetpassword")
+    public RedirectView forgetpasswordPage() {
+        return new RedirectView("forgetpassword.html");
+    }
+
+    @PostMapping("/send-otp")
+    public RedirectView sendOtp(@RequestParam String email) {
+        if (email == null || email.isEmpty()) {
+            return new RedirectView("forgetpassword.html?error=" + "Email is required");
+        }
+        Optional<ChatSingin> checkemail = chatsinginRepo.findByuseremail(email);
+        if (checkemail.isPresent()) {
+            SecureRandom secureRandom = new SecureRandom();
+            String otp = String.valueOf(100000 + secureRandom.nextInt(900000));
+            otpStore.put(email, new OtpEntry(otp));
+
+            try {
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setSubject("OTP verification for ChatApp");
+                message.setTo(email);
+                message.setText(otp + " is your OTP for ChatApp password reset. It is valid for 10 minutes.");
+                javaMailSender.send(message);
+                return new RedirectView("verify-otp.html?email=" + email);
+            } catch (Exception e) {
+                return new RedirectView("forgetpassword.html?error=" + "Failed to send email. Try again.");
+            }
+        } else {
+            return new RedirectView("forgetpassword.html?error=" + "Email not found");
+        }
+    }
+
+    @PostMapping("/verify-otp")
+    public RedirectView verifyOtp(@RequestParam String email, @RequestParam String otp) {
+        OtpEntry entry = otpStore.get(email);
+        if (entry == null) {
+            return new RedirectView("verify-otp.html?email=" + email + "&error=" + "No OTP found. Request a new one.");
+        }
+        if (entry.isExpired()) {
+            otpStore.remove(email);
+            return new RedirectView("verify-otp.html?email=" + email + "&error=" + "OTP has expired. Request a new one.");
+        }
+        if (entry.otp.equals(otp)) {
+            otpStore.remove(email);
+            return new RedirectView("setpassword.html?email=" + email);
+        } else {
+            return new RedirectView("verify-otp.html?email=" + email + "&error=" + "Invalid OTP. Try again.");
+        }
+    }
+
+    @GetMapping("/setpassword")
+    public RedirectView resetpass(@RequestParam String email) {
+        return new RedirectView("setpassword.html?email=" + email);
+    }
+
+    @PostMapping("/setpassword")
+    public RedirectView resetpasswordString(@RequestParam String email, @RequestParam String password,
+            @RequestParam String currentpassword) {
+        if (!password.equals(currentpassword)) {
+            return new RedirectView("setpassword.html?email=" + email + "&error=" + "Passwords do not match");
+        }
+        Optional<ChatSingin> checkemail = chatsinginRepo.findByuseremail(email);
+        if (checkemail.isPresent()) {
+            ChatSingin chatuser = checkemail.get();
+            chatuser.setPassword(passwordEncoder.encode(password));
+            chatuser.setCurrentpassword(passwordEncoder.encode(currentpassword));
+            chatService.registerUser(chatuser);
+            return new RedirectView("login.html?success=" + "Password reset successful. Sign in now.");
+        } else {
+            return new RedirectView("setpassword.html?email=" + email + "&error=" + "Email not valid");
+        }
+    }
+
+    @GetMapping("/active-users")
+    @ResponseBody
+    public List<ChatSingin> showthe_all_activeMembers() {
+        List<ChatSingin> users = chatService.getAllUsers();
+        for (ChatSingin user : users) {
+            user.setPassword(null);
+            user.setCurrentpassword(null);
+        }
+        return users;
+    }
+
+    @GetMapping("/api/users/search")
+    @ResponseBody
+    public List<ChatSingin> searchUsers(@RequestParam String query) {
+        List<ChatSingin> allUsers = chatService.getAllUsers();
+        List<ChatSingin> result = new java.util.ArrayList<>();
+        String lowerQuery = query.toLowerCase();
+        for (ChatSingin user : allUsers) {
+            String name = user.getUsername() != null ? user.getUsername().toLowerCase() : "";
+            String email = user.getUseremail() != null ? user.getUseremail().toLowerCase() : "";
+            if (name.contains(lowerQuery) || email.contains(lowerQuery)) {
+                user.setPassword(null);
+                user.setCurrentpassword(null);
+                result.add(user);
+            }
+        }
+        return result;
+    }
+
+    @GetMapping("/api/current-user")
+    @ResponseBody
+    public java.util.Map<String, String> getCurrentUser() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        if (auth != null && auth.getName() != null && !auth.getName().equals("anonymousUser")) {
+            map.put("email", auth.getName());
+            Optional<ChatSingin> user = chatsinginRepo.findByuseremail(auth.getName());
+            if (user.isPresent()) {
+                map.put("username", user.get().getUsername());
+            }
+        }
+        return map;
+    }
+
+    @PostMapping("/api/request/send")
+    @ResponseBody
+    public com.example.chatapplication.Notification sendRequest(@RequestParam String receiverEmail) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String senderEmail = auth.getName();
+        return chatService.sendRequest(senderEmail, receiverEmail);
+    }
+
+    @GetMapping("/api/request/pending")
+    @ResponseBody
+    public List<com.example.chatapplication.Notification> getPendingRequests() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String receiverEmail = auth.getName();
+        return chatService.getPendingNotifications(receiverEmail);
+    }
+
+    @PostMapping("/api/request/accept")
+    @ResponseBody
+    public String acceptRequest(@RequestParam Long notificationId) {
+        return chatService.acceptRequest(notificationId);
+    }
+
+    @PostMapping("/api/request/reject")
+    @ResponseBody
+    public String rejectRequest(@RequestParam Long notificationId) {
+        return chatService.rejectRequest(notificationId);
+    }
+
+    @GetMapping("/api/friends")
+    @ResponseBody
+    public List<com.example.chatapplication.ChatConnection> getFriends() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentEmail = auth.getName();
+        return chatService.getFriends(currentEmail);
+    }
+
+    @Autowired
+    private com.example.chatapplication.UserStatusRepo userStatusRepo;
+
+    @Autowired
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+
+    @GetMapping("/api/chat/history")
+    @ResponseBody
+    public List<com.example.chatapplication.ChatMessageDto> getChatHistory(@RequestParam Long connectionId, @RequestParam(defaultValue = "0") int page) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentUser = auth.getName();
+        return chatService.getChatHistory(connectionId, currentUser, page);
+    }
+
+    @PostMapping("/api/chat/media/upload")
+    @ResponseBody
+    public java.util.Map<String, Object> uploadMedia(@RequestParam(value = "file") org.springframework.web.multipart.MultipartFile file, @RequestParam Long connectionId) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        
+        if (file == null || file.isEmpty()) {
+            throw new RuntimeException("File is empty.");
+        }
+        
+        String mediaContentType = file.getContentType();
+        if (mediaContentType == null || (!mediaContentType.startsWith("image/") && !mediaContentType.startsWith("audio/") && !mediaContentType.startsWith("video/"))) {
+            throw new RuntimeException("Invalid file type. Only images, audio, and video are allowed.");
+        }
+        
+        Long mediaId = mediaService.uploadMedia(file, connectionId);
+        
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("mediaId", mediaId);
+        return response;
+    }
+
+    @Autowired
+    private com.example.chatapplication.EncryptionService encryptionService;
+
+    @GetMapping("/api/chat/media/{mediaId}")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> getChatMedia(@PathVariable Long mediaId) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentUser = auth.getName();
+        
+        com.example.chatapplication.MediaStorageEntity entity = mediaService.getMediaEntity(mediaId);
+        if (entity == null || entity.getMediaData() == null) {
+            return org.springframework.http.ResponseEntity.notFound().build();
+        }
+        
+        // Authorization check: Verify user is part of the connection
+        List<com.example.chatapplication.ChatConnection> friends = chatService.getFriends(currentUser);
+        boolean hasAccess = friends.stream().anyMatch(c -> c.getId().equals(entity.getConnectionId()));
+        if (!hasAccess) {
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+        
+        try {
+            byte[] decryptedMedia = encryptionService.decrypt(entity.getMediaData(), entity.getMediaEncryptionIv());
+            org.springframework.core.io.ByteArrayResource resource = new org.springframework.core.io.ByteArrayResource(decryptedMedia);
+            return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(entity.getMediaContentType()))
+                .cacheControl(org.springframework.http.CacheControl.maxAge(7, java.util.concurrent.TimeUnit.DAYS))
+                .body(resource);
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/api/chat/clear/{connectionId}")
+    @ResponseBody
+    public org.springframework.http.ResponseEntity<String> clearChat(@PathVariable Long connectionId) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentUser = auth.getName();
+
+        List<com.example.chatapplication.ChatConnection> friends = chatService.getFriends(currentUser);
+        boolean hasAccess = friends.stream().anyMatch(c -> c.getId().equals(connectionId));
+        if (!hasAccess) {
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body("Unauthorized");
+        }
+
+        chatService.clearChatHistory(connectionId, currentUser);
+        return org.springframework.http.ResponseEntity.ok("SUCCESS");
+    }
+
+    @PostMapping("/api/chat/delete")
+    @ResponseBody
+    public org.springframework.http.ResponseEntity<String> deleteChat(@RequestParam Long connectionId, @RequestParam String timeframe) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String currentUser = auth.getName();
+        
+        List<com.example.chatapplication.ChatConnection> friends = chatService.getFriends(currentUser);
+        boolean hasAccess = friends.stream().anyMatch(c -> c.getId().equals(connectionId));
+        if (!hasAccess) {
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body("Unauthorized to delete this chat");
+        }
+        
+        try {
+            chatService.deleteChatHistory(connectionId, timeframe);
+            return org.springframework.http.ResponseEntity.ok("SUCCESS");
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to delete chat");
+        }
+    }
+
+    @GetMapping("/api/user/status/{userEmail}")
+    @ResponseBody
+    public java.util.Map<String, Object> getUserStatus(@PathVariable String userEmail) {
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        java.util.Optional<com.example.chatapplication.UserStatus> status = userStatusRepo.findById(userEmail);
+        if (status.isPresent()) {
+            result.put("isOnline", status.get().getIsOnline());
+            result.put("lastSeen", status.get().getLastSeen() != null
+                    ? status.get().getLastSeen().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                    : null);
+        } else {
+            result.put("isOnline", false);
+            result.put("lastSeen", null);
+        }
+        return result;
+    }
+
+    @PostMapping("/api/user/online")
+    @ResponseBody
+    public java.util.Map<String, String> setUserOnline() {
+        String userEmail = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+
+        java.util.Optional<com.example.chatapplication.UserStatus> existing = userStatusRepo.findById(userEmail);
+        boolean wasOffline = true;
+
+        if (existing.isPresent()) {
+            com.example.chatapplication.UserStatus status = existing.get();
+            wasOffline = !Boolean.TRUE.equals(status.getIsOnline());
+            if (wasOffline) {
+                status.setIsOnline(true);
+                userStatusRepo.save(status);
+            }
+        } else {
+            com.example.chatapplication.UserStatus status = new com.example.chatapplication.UserStatus();
+            status.setUserEmail(userEmail);
+            status.setIsOnline(true);
+            status.setActiveConnections(0);
+            userStatusRepo.save(status);
+        }
+
+        if (wasOffline) {
+            java.util.Map<String, Object> statusMsg = new java.util.HashMap<>();
+            statusMsg.put("email", userEmail);
+            statusMsg.put("online", true);
+            statusMsg.put("lastSeen", null);
+            messagingTemplate.convertAndSend("/topic/status", (Object) statusMsg);
+        }
+
+        result.put("status", "online");
+        return result;
+    }
+}

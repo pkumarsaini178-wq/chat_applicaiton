@@ -1,0 +1,29 @@
+# Ignore database folder and database files
+data/
+*.mv.db
+*.trace.db
+
+# Build files
+target/
+build/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE settings
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+
+# OS and Temp Files
+CUsersPANKAJ~1AppDataLocalTempopencodemvn_output.txt
+CUsersPANKAJ~1AppDataLocalTempopencodemvn_output2.txt
+*.log
+.DS_Store
+Thumbs.db
