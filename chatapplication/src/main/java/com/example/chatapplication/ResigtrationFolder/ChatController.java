@@ -241,6 +241,32 @@ public class ChatController {
         return map;
     }
 
+    @PostMapping("/api/user/update-profile")
+    @ResponseBody
+    public java.util.Map<String, String> updateProfile(@RequestParam String username) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        java.util.Map<String, String> response = new java.util.HashMap<>();
+        if (auth != null && auth.getName() != null && !auth.getName().equals("anonymousUser")) {
+            String email = auth.getName();
+            Optional<ChatSingin> userOpt = chatsinginRepo.findByuseremail(email);
+            if (userOpt.isPresent()) {
+                ChatSingin user = userOpt.get();
+                user.setUsername(username);
+                chatsinginRepo.save(user);
+                response.put("status", "SUCCESS");
+                response.put("message", "Profile updated successfully!");
+                response.put("username", username);
+            } else {
+                response.put("status", "ERROR");
+                response.put("message", "User not found.");
+            }
+        } else {
+            response.put("status", "ERROR");
+            response.put("message", "Unauthorized.");
+        }
+        return response;
+    }
+
     @PostMapping("/api/request/send")
     @ResponseBody
     public com.example.chatapplication.Notification sendRequest(@RequestParam String receiverEmail) {

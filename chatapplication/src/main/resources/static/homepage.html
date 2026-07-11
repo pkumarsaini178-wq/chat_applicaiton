@@ -252,14 +252,9 @@
                 <input type="text" id="navbarSearchInput" placeholder="Search users..." onkeyup="navbarSearchUser()">
             </div>
 
-            <button id="logoutBtn" class="logout-btn" onclick="logoutUser()" title="Logout">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                    <polyline points="16 17 21 12 16 7"></polyline>
-                    <line x1="21" y1="12" x2="9" y2="12"></line>
-                </svg>
-                <span>Logout</span>
-            </button>
+            <div id="profileBtn" onclick="openProfileModal()" style="width: 38px; height: 38px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; justify-content: center; align-items: center; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(108, 92, 231, 0.2); transition: transform 0.2s;" title="My Profile">
+                U
+            </div>
         </div>
     </div>
 
@@ -1614,6 +1609,9 @@
                         } else {
                             document.getElementById('currentUserName').innerText = currentUserEmail;
                         }
+                        let initial = (currentUsername || currentUserEmail || 'U').charAt(0).toUpperCase();
+                        let profileBtn = document.getElementById('profileBtn');
+                        if (profileBtn) profileBtn.innerText = initial;
                         subscribeToNotifications();
                         subscribeToFriendList();
                         subscribeToRequestConfirm();
@@ -1717,8 +1715,93 @@
             }
         }
 
+        function openProfileModal() {
+            const modal = document.getElementById('profileModal');
+            if (modal) {
+                document.getElementById('profileEmail').innerText = currentUserEmail || '';
+                document.getElementById('profileUsernameInput').value = currentUsername || '';
+                
+                let initial = (currentUsername || currentUserEmail || 'U').charAt(0).toUpperCase();
+                let modalAvatar = document.getElementById('profileModalAvatar');
+                if (modalAvatar) {
+                    modalAvatar.innerText = initial;
+                }
+                modal.style.display = 'flex';
+            }
+        }
+
+        function closeProfileModal() {
+            const modal = document.getElementById('profileModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function updateUserProfile() {
+            const usernameInput = document.getElementById('profileUsernameInput');
+            const newUsername = usernameInput.value.trim();
+            if (!newUsername) {
+                alert('Username cannot be empty');
+                return;
+            }
+
+            let formData = new FormData();
+            formData.append('username', newUsername);
+
+            fetch('/api/user/update-profile', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'SUCCESS') {
+                    currentUsername = data.username;
+                    if (currentUsername !== currentUserEmail) {
+                        document.getElementById('currentUserName').innerText = currentUsername + ' (' + currentUserEmail + ')';
+                    } else {
+                        document.getElementById('currentUserName').innerText = currentUserEmail;
+                    }
+                    let initial = currentUsername.charAt(0).toUpperCase();
+                    let profileBtn = document.getElementById('profileBtn');
+                    if (profileBtn) profileBtn.innerText = initial;
+                    
+                    showToast(data.message, 'success');
+                    closeProfileModal();
+                } else {
+                    alert(data.message || 'Failed to update profile');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Error updating profile');
+            });
+        }
 
     </script>
+
+    <!-- Profile Modal Overlay -->
+    <div id="profileModal" class="modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center;">
+        <div class="modal-content" style="background-color: var(--card-bg); padding: 30px; border-radius: var(--radius-lg); width: 360px; box-shadow: var(--card-hover-shadow); position: relative; border: 1px solid var(--border-color); text-align: center;">
+            <button onclick="closeProfileModal()" style="position: absolute; right: 16px; top: 16px; background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; width: auto; padding: 0;">&times;</button>
+            <div id="profileModalAvatar" class="profile" style="width: 60px; height: 60px; font-size: 24px; margin: 0 auto 16px; border-radius: 50%; display: flex; justify-content: center; align-items: center; background: var(--primary-gradient); color: white;">U</div>
+            <h3 style="margin-bottom: 20px; font-weight: 700; color: var(--text-main);">My Profile</h3>
+            
+            <div style="text-align: left; margin-bottom: 16px;">
+                <label style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 4px;">Email Address</label>
+                <div id="profileEmail" style="padding: 12px; background: var(--input-bg); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 14px; border: 1px solid var(--border-color); word-break: break-all;">user@email.com</div>
+            </div>
+
+            <div style="text-align: left; margin-bottom: 24px;">
+                <label for="profileUsernameInput" style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 4px;">Username</label>
+                <input type="text" id="profileUsernameInput" style="margin-bottom: 0;" required>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button onclick="updateUserProfile()" style="width: 100%;">Update Username</button>
+                <button onclick="logoutUser()" style="width: 100%; background: var(--danger-light); color: var(--danger); border: none;">Logout</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 
