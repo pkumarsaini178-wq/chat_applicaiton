@@ -225,6 +225,22 @@ public class ChatController {
         return map;
     }
 
+    @GetMapping("/api/token")
+    @ResponseBody
+    public java.util.Map<String, String> getJwtToken(HttpServletRequest request) {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if ("jwt".equals(cookie.getName())) {
+                    map.put("token", cookie.getValue());
+                    break;
+                }
+            }
+        }
+        return map;
+    }
+
     @PostMapping("/api/request/send")
     @ResponseBody
     public com.example.chatapplication.Notification sendRequest(@RequestParam String receiverEmail) {

@@ -36,6 +36,16 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                 }
             }
 
+            if (token == null) {
+                String query = servletRequest.getQueryString();
+                if (query != null && query.contains("token=")) {
+                    token = query.substring(query.indexOf("token=") + 6);
+                    if (token.contains("&")) {
+                        token = token.substring(0, token.indexOf("&"));
+                    }
+                }
+            }
+
             if (token != null && jwtUntil.Token_is_vailid(token)) {
                 String email = jwtUntil.FechEmailfromToke(token);
                 // Store the authenticated user's email in WebSocket session attributes

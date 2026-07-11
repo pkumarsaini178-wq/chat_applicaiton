@@ -726,31 +726,45 @@
         }
 
         function connectWebSocket() {
-            let socket = new SockJS('/ws');
-            stompClient = Stomp.over(socket);
-            stompClient.debug = null;
-            stompClient.heartbeat.outgoing = 10000;
-            stompClient.heartbeat.incoming = 10000;
-            stompClient.connect({}, function (frame) {
-                console.log('Connected to WebSocket STOMP');
+            fetch('/config.json')
+                .then(r => r.json())
+                .then(config => {
+                    const backendUrl = config.BACKEND_URL || 'https://chat-backend-lya5.onrender.com';
+                    return fetch('/api/token')
+                        .then(r => r.json())
+                        .then(data => {
+                            const token = data.token || '';
+                            let socket = new SockJS(backendUrl + '/ws?token=' + token);
+                            stompClient = Stomp.over(socket);
+                            stompClient.debug = null;
+                            stompClient.heartbeat.outgoing = 10000;
+                            stompClient.heartbeat.incoming = 10000;
+                            stompClient.connect({}, function (frame) {
+                                console.log('Connected to WebSocket STOMP');
 
-                // Subscribe to real-time status updates
-                stompClient.subscribe('/topic/status', function (payload) {
-                    let data = JSON.parse(payload.body);
-                    updateUserStatusUI(data.email, data.online, data.lastSeen);
+                                // Subscribe to real-time status updates
+                                stompClient.subscribe('/topic/status', function (payload) {
+                                    let data = JSON.parse(payload.body);
+                                    updateUserStatusUI(data.email, data.online, data.lastSeen);
+                                });
+
+                                subscribeToNotifications();
+                                subscribeToFriendList();
+                                subscribeToRequestConfirm();
+
+                                if (currentChatConnectionId) {
+                                    subscribeToChat(currentChatConnectionId);
+                                }
+                            }, function (error) {
+                                console.error('WebSocket Error: ', error);
+                                setTimeout(connectWebSocket, 5000);
+                            });
+                        });
+                })
+                .catch(err => {
+                    console.error('Failed to initialize WebSocket:', err);
+                    setTimeout(connectWebSocket, 5000);
                 });
-
-                subscribeToNotifications();
-                subscribeToFriendList();
-                subscribeToRequestConfirm();
-
-                if (currentChatConnectionId) {
-                    subscribeToChat(currentChatConnectionId);
-                }
-            }, function (error) {
-                console.error('WebSocket Error: ', error);
-                setTimeout(connectWebSocket, 5000);
-            });
         }
 
         document.addEventListener('visibilitychange', function() {
