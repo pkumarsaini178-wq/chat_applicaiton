@@ -37,3 +37,6 @@ build/
 *.env
 application-local.properties
 application-secret.properties
+nul
+NUL
+

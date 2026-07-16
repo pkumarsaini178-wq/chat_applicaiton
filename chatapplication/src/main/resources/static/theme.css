@@ -765,3 +765,89 @@ button:active {
     animation: fadeInUp 0.2s ease;
 }
 
+/* Emoji Picker & Textarea Formatting */
+.msg-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.emoji-picker {
+    position: absolute;
+    bottom: 95px;
+    right: 20px;
+    width: 320px;
+    height: 300px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow: hidden;
+    animation: fadeInUp 0.2s ease;
+}
+
+.emoji-categories {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px;
+    background: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.emoji-categories span {
+    font-size: 20px;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.emoji-categories span:hover {
+    transform: scale(1.2);
+}
+
+.emoji-grid {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+    align-content: start;
+}
+
+.emoji-item {
+    font-size: 22px;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    transition: transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    border-radius: 4px;
+}
+
+.emoji-item:hover {
+    background: var(--bg-color);
+    transform: scale(1.15);
+}
+
+#chatMessage {
+    width: 100%;
+    resize: none;
+    height: 38px;
+    max-height: 120px;
+    overflow-y: auto;
+    border-radius: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.4;
+    outline: none;
+    box-sizing: border-box;
+}
+

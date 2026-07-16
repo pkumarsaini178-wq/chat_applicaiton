@@ -39,15 +39,26 @@ public class JwtFilter extends OncePerRequestFilter {
                                                 }
                                             }
                                         }
-                                        if(token!=null && jwtUntil.Token_is_vailid(token))
+                                        if(token!=null)
                                         {
-                                            String email=jwtUntil.FechEmailfromToke(token);  
-                                            if(SecurityContextHolder.getContext().getAuthentication()==null)
-                                                {
-                                                    UsernamePasswordAuthenticationToken auth=new UsernamePasswordAuthenticationToken( email,null,new ArrayList<>());
-                                                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                                                    SecurityContextHolder.getContext().setAuthentication(auth);
-                                                }  
+                                            if(jwtUntil.Token_is_vailid(token))
+                                            {
+                                                String email=jwtUntil.FechEmailfromToke(token);  
+                                                if(SecurityContextHolder.getContext().getAuthentication()==null)
+                                                    {
+                                                        UsernamePasswordAuthenticationToken auth=new UsernamePasswordAuthenticationToken( email,null,new ArrayList<>());
+                                                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                                                        SecurityContextHolder.getContext().setAuthentication(auth);
+                                                    }  
+                                            }
+                                            else
+                                            {
+                                                // Clear invalid cookie to prevent console flooding
+                                                Cookie cookie = new Cookie("jwt", "");
+                                                cookie.setPath("/");
+                                                cookie.setMaxAge(0);
+                                                response.addCookie(cookie);
+                                            }
                                         }
                                         chain.doFilter(request, response);
                                         
