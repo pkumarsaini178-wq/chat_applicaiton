@@ -72,11 +72,11 @@ public class ChatController {
                 }
                 String token = jwtUntil.gunrateToken(emailForToken);
 
-                // Create cookie to store the JWT token for 24 hours
+                // Create cookie to store the JWT token for 1 week
                 Cookie cookie = new Cookie("jwt", token);
                 cookie.setHttpOnly(true); // secure against XSS
                 cookie.setPath("/"); // available across the entire application
-                cookie.setMaxAge(24 * 60 * 60); // 24 hours expiry in seconds
+                cookie.setMaxAge(7 * 24 * 60 * 60); // 1 week expiry in seconds
 
                 response.addCookie(cookie);
 

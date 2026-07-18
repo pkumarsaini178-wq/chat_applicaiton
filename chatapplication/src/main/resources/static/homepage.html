@@ -223,6 +223,14 @@
                 display: none;
             }
         }
+        .chat-msg {
+            cursor: pointer;
+            position: relative;
+        }
+        @keyframes menuPopIn {
+            from { opacity: 0; transform: scale(0.95) translateY(4px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
     </style>
 
 </head>
@@ -766,7 +774,7 @@
         }
 
         function shouldPlaySound() {
-            return true;
+            return false;
         }
 
         let notifSubscription = null;
@@ -1461,9 +1469,17 @@
         }
 
         // Context Menu Builders
+        let clickStartTime = 0;
+        let clickStartTarget = null;
+        let lastMenuOpenTime = 0;
+
         document.getElementById('chatHistory').addEventListener('click', function(e) {
             let msgEl = e.target.closest('.chat-msg');
             if (!msgEl) return;
+
+            let ignoreTags = ['IMG', 'AUDIO', 'VIDEO', 'A', 'BUTTON'];
+            let isMediaOrLink = ignoreTags.includes(e.target.tagName) || e.target.closest('.quoted-msg') || e.target.closest('button');
+            if (isMediaOrLink) return;
 
             let msgId = msgEl.getAttribute('data-message-id');
             // Ignore temporary sent message placeholders
@@ -1479,14 +1495,51 @@
         });
 
         function showContextMenu(msgId, isMe, msgText, senderName, event) {
+            let now = Date.now();
+            if (now - lastMenuOpenTime < 100) return; // Prevent double-trigger
+            lastMenuOpenTime = now;
+
             let existing = document.getElementById('msgContextMenu');
             if (existing) existing.remove();
 
             let menu = document.createElement('div');
             menu.id = 'msgContextMenu';
-            menu.style.cssText = 'position:fixed; background:var(--card-bg); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.15); z-index:9999; display:flex; flex-direction:column; gap:4px; min-width:140px;';
-            menu.style.left = event.clientX + 'px';
-            menu.style.top = event.clientY + 'px';
+            menu.style.cssText = `
+                position: fixed;
+                background: var(--card-bg);
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius-md);
+                padding: 6px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                min-width: 150px;
+                animation: menuPopIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+                transform-origin: top left;
+            `;
+
+            let x = event.clientX;
+            let y = event.clientY;
+            
+            // Resolve touch coordinates
+            if (event.changedTouches && event.changedTouches.length > 0) {
+                x = event.changedTouches[0].clientX;
+                y = event.changedTouches[0].clientY;
+            } else if (event.touches && event.touches.length > 0) {
+                x = event.touches[0].clientX;
+                y = event.touches[0].clientY;
+            }
+
+            // Fallback if clientX/Y are undefined
+            if (x === undefined || y === undefined) {
+                x = window.innerWidth / 2 - 75;
+                y = window.innerHeight / 2 - 50;
+            }
+
+            // Append to body first so we can measure the menu dimensions
+            document.body.appendChild(menu);
 
             // 1. Reply
             let btnReply = createMenuButton('Reply', function() {
@@ -1517,13 +1570,33 @@
                 menu.appendChild(btnDeleteEveryone);
             }
 
-            document.body.appendChild(menu);
-            event.stopPropagation();
+            // Adjust position so it doesn't overflow the viewport
+            let menuRect = menu.getBoundingClientRect();
+            let viewportWidth = window.innerWidth;
+            let viewportHeight = window.innerHeight;
+
+            let posX = x;
+            let posY = y;
+
+            if (posX + menuRect.width > viewportWidth) {
+                posX = viewportWidth - menuRect.width - 12;
+            }
+            if (posY + menuRect.height > viewportHeight) {
+                posY = viewportHeight - menuRect.height - 12;
+            }
+
+            if (posX < 12) posX = 12;
+            if (posY < 12) posY = 12;
+
+            menu.style.left = posX + 'px';
+            menu.style.top = posY + 'px';
+
+            if (event.stopPropagation) event.stopPropagation();
         }
 
         function createMenuButton(text, onClick) {
             let btn = document.createElement('button');
-            btn.style.cssText = 'background:none; border:none; padding:8px 12px; color:var(--text-main); font-size:13px; font-weight:500; text-align:left; cursor:pointer; width:100%; border-radius:4px; box-shadow:none;';
+            btn.style.cssText = 'background:none; border:none; padding:8px 12px; color:var(--text-main); font-size:13px; font-weight:500; text-align:left; cursor:pointer; width:100%; border-radius:6px; box-shadow:none; transition: background 0.15s ease, color 0.15s ease;';
             btn.innerText = text;
             btn.onclick = function() {
                 onClick();
@@ -1570,6 +1643,8 @@
             let touch = e.touches ? e.touches[0] : e;
             startX = touch.clientX;
             startY = touch.clientY;
+            clickStartTime = Date.now();
+            clickStartTarget = e.target;
             diffX = 0;
             diffY = 0;
             isSwiping = false;
@@ -1608,6 +1683,15 @@
             swipeTarget.style.transition = 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
             swipeTarget.style.transform = 'translateX(0px)';
 
+            let touch = e.changedTouches ? e.changedTouches[0] : e;
+            let currentX = touch.clientX || (e.clientX !== undefined ? e.clientX : startX);
+            let currentY = touch.clientY || (e.clientY !== undefined ? e.clientY : startY);
+
+            let distanceX = Math.abs(currentX - startX);
+            let distanceY = Math.abs(currentY - startY);
+            let distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+            let timeElapsed = Date.now() - clickStartTime;
+
             if (isSwiping && diffX > 60) {
                 let msgId = swipeTarget.getAttribute('data-message-id');
                 let msgText = swipeTarget.getAttribute('data-message-text') || '';
@@ -1623,10 +1707,33 @@
                 }
 
                 startReply(msgId, senderName, msgText);
+            } else if (!isSwiping && distance < 8 && timeElapsed < 300) {
+                // This is a direct click/tap on the message
+                let target = clickStartTarget || e.target;
+                let ignoreTags = ['IMG', 'AUDIO', 'VIDEO', 'A', 'BUTTON'];
+                let isMediaOrLink = ignoreTags.includes(target.tagName) || target.closest('.quoted-msg') || target.closest('button');
+                
+                if (!isMediaOrLink) {
+                    let msgId = swipeTarget.getAttribute('data-message-id');
+                    let isMe = swipeTarget.classList.contains('me');
+                    let msgTextEl = swipeTarget.querySelector('.msg-text');
+                    let msgText = msgTextEl ? msgTextEl.innerText : '';
+                    let senderNameEl = swipeTarget.querySelector('.chat-time');
+                    let senderName = senderNameEl ? senderNameEl.innerText.split(' - ')[0] : 'Unknown';
+
+                    let fakeEvent = {
+                        clientX: currentX,
+                        clientY: currentY,
+                        stopPropagation: function() {},
+                        preventDefault: function() {}
+                    };
+                    showContextMenu(msgId, isMe, msgText, senderName, fakeEvent);
+                }
             }
 
             swipeTarget = null;
             isSwiping = false;
+            clickStartTarget = null;
         }
 
         // Reply and Edit UI handlers
