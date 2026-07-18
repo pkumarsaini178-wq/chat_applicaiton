@@ -44,3 +44,5 @@ services:
         generateValue: true # Render will automatically generate a strong secret
       - key: CHAT_ENCRYPTION_KEY
         generateValue: true
+      - key: TZ
+        value: Asia/Kolkata

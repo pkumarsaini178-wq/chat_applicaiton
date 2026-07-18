@@ -21,4 +21,6 @@ services:
         sync: false
       - key: MAIL_PASSWORD
         sync: false
+      - key: TZ
+        value: Asia/Kolkata
 
