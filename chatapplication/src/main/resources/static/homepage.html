@@ -336,6 +336,9 @@
         </div>
     </div>
 
+    <!-- Connection Status Bar -->
+    <div id="connectionStatus" class="conn-status" style="display:none;"></div>
+
     <div class="main">
 
         <!-- Left Panel -->
@@ -448,7 +451,7 @@
                 stompClient.send('/app/request.send', {}, JSON.stringify({ receiverEmail: receiverEmail }));
                 if (btnElement) btnElement.innerText = "Sent";
             } else {
-                alert('WebSocket not connected. Please try again.');
+                showToast('WebSocket not connected. Please wait for reconnection.', 'error');
                 if (btnElement) {
                     btnElement.disabled = false;
                     btnElement.innerText = "Add Friend";
@@ -904,9 +907,108 @@
 
         let reconnectAttempts = 0;
         const MAX_RECONNECT_DELAY = 30000;
+        const MAX_RECONNECT_ATTEMPTS = 20;
+        let isReconnecting = false;
+        let currentBackendUrl = null;
+
+        function showConnectionStatus(status) {
+            let bar = document.getElementById('connectionStatus');
+            if (!bar) return;
+            if (status === 'connecting') {
+                bar.textContent = 'Connecting...';
+                bar.style.display = 'block';
+                bar.className = 'conn-status connecting';
+            } else if (status === 'reconnecting') {
+                bar.textContent = 'Reconnecting...';
+                bar.style.display = 'block';
+                bar.className = 'conn-status reconnecting';
+            } else if (status === 'failed') {
+                bar.textContent = 'Connection lost. Tap to retry.';
+                bar.style.display = 'block';
+                bar.className = 'conn-status failed';
+                bar.onclick = function() {
+                    reconnectAttempts = 0;
+                    isReconnecting = false;
+                    connectWebSocket();
+                };
+            } else {
+                bar.style.display = 'none';
+                bar.className = 'conn-status';
+            }
+        }
 
         function connectWebSocket() {
-            let backendUrl = window.location.origin;
+            if (isReconnecting && stompClient && stompClient.connected) return;
+            isReconnecting = true;
+
+            let backendUrl = currentBackendUrl || window.location.origin;
+
+            function doConnect(url, token) {
+                currentBackendUrl = url;
+                let socket = new SockJS(url + '/ws?token=' + token);
+                stompClient = Stomp.over(socket);
+                stompClient.debug = null;
+                stompClient.heartbeat.outgoing = 10000;
+                stompClient.heartbeat.incoming = 10000;
+
+                let socketClosedNormally = false;
+
+                socket.onclose = function(event) {
+                    if (event.code === 1000) {
+                        socketClosedNormally = true;
+                        return;
+                    }
+                    if (socketClosedNormally) return;
+                    handleReconnect();
+                };
+
+                socket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                };
+
+                stompClient.connect({}, function (frame) {
+                    console.log('Connected to WebSocket STOMP');
+                    reconnectAttempts = 0;
+                    isReconnecting = false;
+                    showConnectionStatus('connected');
+
+                    stompClient.subscribe('/topic/status', function (payload) {
+                        let data = JSON.parse(payload.body);
+                        updateUserStatusUI(data.email, data.online, data.lastSeen);
+                    });
+
+                    subscribeToNotifications();
+                    subscribeToFriendList();
+                    subscribeToRequestConfirm();
+
+                    if (currentChatConnectionId) {
+                        subscribeToChat(currentChatConnectionId);
+                    }
+
+                    // Re-mark self online after reconnect
+                    fetch('/api/user/online', { method: 'POST' }).catch(function() {});
+                }, function (error) {
+                    console.error('WebSocket STOMP Error:', error);
+                    handleReconnect();
+                });
+            }
+
+            function handleReconnect() {
+                if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    console.error('Max reconnect attempts reached');
+                    isReconnecting = false;
+                    showConnectionStatus('failed');
+                    return;
+                }
+                showConnectionStatus('reconnecting');
+                let delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+                reconnectAttempts++;
+                console.log('Reconnecting in ' + delay + 'ms (attempt ' + reconnectAttempts + ')');
+                isReconnecting = false;
+                setTimeout(connectWebSocket, delay);
+            }
+
+            showConnectionStatus('connecting');
 
             fetch('/config.json')
                 .then(r => {
@@ -929,55 +1031,11 @@
                         })
                         .then(data => {
                             const token = data.token || '';
-                            let socket = new SockJS(backendUrl + '/ws?token=' + token);
-                            stompClient = Stomp.over(socket);
-                            stompClient.debug = null;
-                            stompClient.heartbeat.outgoing = 10000;
-                            stompClient.heartbeat.incoming = 10000;
-
-                            socket.onclose = function(event) {
-                                console.warn('WebSocket socket closed:', event.code, event.reason);
-                                if (event.code !== 1000) {
-                                    let delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-                                    reconnectAttempts++;
-                                    console.log('Reconnecting in ' + delay + 'ms (attempt ' + reconnectAttempts + ')');
-                                    setTimeout(connectWebSocket, delay);
-                                }
-                            };
-
-                            socket.onerror = function(error) {
-                                console.error('WebSocket socket error:', error);
-                            };
-
-                            stompClient.connect({}, function (frame) {
-                                console.log('Connected to WebSocket STOMP');
-                                reconnectAttempts = 0;
-
-                                stompClient.subscribe('/topic/status', function (payload) {
-                                    let data = JSON.parse(payload.body);
-                                    updateUserStatusUI(data.email, data.online, data.lastSeen);
-                                });
-
-                                subscribeToNotifications();
-                                subscribeToFriendList();
-                                subscribeToRequestConfirm();
-
-                                if (currentChatConnectionId) {
-                                    subscribeToChat(currentChatConnectionId);
-                                }
-                            }, function (error) {
-                                console.error('WebSocket STOMP Error: ', error);
-                                let delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-                                reconnectAttempts++;
-                                console.log('Reconnecting in ' + delay + 'ms (attempt ' + reconnectAttempts + ')');
-                                setTimeout(connectWebSocket, delay);
-                            });
+                            doConnect(backendUrl, token);
                         })
                         .catch(err => {
                             console.error('Failed to fetch WebSocket token:', err);
-                            let delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-                            reconnectAttempts++;
-                            setTimeout(connectWebSocket, delay);
+                            handleReconnect();
                         });
                 });
         }
@@ -986,8 +1044,22 @@
             if (document.visibilityState === 'visible') {
                 if (!stompClient || !stompClient.connected) {
                     reconnectAttempts = 0;
+                    isReconnecting = false;
                     connectWebSocket();
                 }
+            }
+        });
+
+        window.addEventListener('beforeunload', function() {
+            // Disconnect WebSocket cleanly
+            if (stompClient && stompClient.connected) {
+                try {
+                    stompClient.disconnect(function() {});
+                } catch(e) {}
+            }
+            // Mark offline via sendBeacon (works even during page unload)
+            if (currentUserEmail) {
+                navigator.sendBeacon('/api/user/offline');
             }
         });
 
@@ -1497,7 +1569,7 @@
                     sendBtn.disabled = false;
                 }, 200);
             } else {
-                alert('WebSocket is not connected. Please try again later.');
+                showToast('WebSocket not connected. Please wait for reconnection.', 'error');
             }
         }
 
@@ -2050,9 +2122,8 @@
                         let initial = (currentUsername || currentUserEmail || 'U').charAt(0).toUpperCase();
                         let profileBtn = document.getElementById('profileBtn');
                         if (profileBtn) profileBtn.innerText = initial;
-                        subscribeToNotifications();
-                        subscribeToFriendList();
-                        subscribeToRequestConfirm();
+                        // Subscriptions are handled inside connectWebSocket() STOMP success callback
+                        // No need to call them again here
 
                         fetch('/active-users')
                             .then(response => response.json())
@@ -2060,57 +2131,89 @@
                                 let userList = document.getElementById("userList");
                                 userList.innerHTML = '';
 
-                                let addedUsers = 0;
-                                let userStatusPromises = [];
-                                data.forEach(user => {
-                                    let email = user.useremail || 'No email';
-                                    if (email !== 'No email' && email !== currentUserEmail) {
-                                        userStatusPromises.push(
-                                            fetch('/api/user/status/' + encodeURIComponent(email))
-                                                .then(res => res.json())
-                                                .then(s => ({ email: email, isOnline: s.isOnline }))
-                                                .catch(() => ({ email: email, isOnline: false }))
-                                        );
-                                    }
-                                });
-                                Promise.all(userStatusPromises).then(statuses => {
-                                    let statusMap = {};
-                                    statuses.forEach(s => { statusMap[s.email] = s.isOnline; });
-                                    data.forEach(user => {
+                                let emails = data
+                                    .filter(user => user.useremail && user.useremail !== currentUserEmail)
+                                    .filter(user => {
                                         let username = user.username || 'Unknown';
-                                        let email = user.useremail || 'No email';
+                                        if (userMap.username && username !== 'Unknown' && username === userMap.username) return false;
+                                        if (username === currentUserEmail) return false;
+                                        return true;
+                                    })
+                                    .map(user => user.useremail);
 
-                                        if (email !== 'No email' && email === currentUserEmail) return;
-                                        if (userMap.username && username !== 'Unknown' && username === userMap.username) return;
-                                        if (username === currentUserEmail) return;
+                                let statusUrl = '/api/user/status/batch?emails=' + emails.map(e => encodeURIComponent(e)).join('&');
 
-                                        addedUsers++;
-                                        let profileInitial = username.charAt(0).toUpperCase();
-                                        let isOnline = statusMap[email] || false;
-                                        let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
+                                fetch(statusUrl)
+                                    .then(res => res.json())
+                                    .then(statusMap => {
+                                        let addedUsers = 0;
+                                        data.forEach(user => {
+                                            let username = user.username || 'Unknown';
+                                            let email = user.useremail || 'No email';
 
-                                        let userHtml = `
-                                            <div class="user" data-email="${esc(email)}">
-                                                <div style="display:flex; align-items:center; flex:1; min-width:0;">
-                                                    <div class="profile-wrapper">
-                                                        <div class="profile" style="background: ${isOnline ? '' : 'var(--text-muted)'}">${esc(profileInitial)}</div>
-                                                        <span class="online-dot" style="display: block; background: ${statusColor};"></span>
+                                            if (email === 'No email' || email === currentUserEmail) return;
+                                            if (userMap.username && username !== 'Unknown' && username === userMap.username) return;
+                                            if (username === currentUserEmail) return;
+
+                                            addedUsers++;
+                                            let profileInitial = username.charAt(0).toUpperCase();
+                                            let userStatus = statusMap[email] || { isOnline: false };
+                                            let isOnline = userStatus.isOnline || false;
+                                            let statusColor = isOnline ? 'var(--whatsapp-green)' : 'var(--text-muted)';
+
+                                            let userHtml = `
+                                                <div class="user" data-email="${esc(email)}">
+                                                    <div style="display:flex; align-items:center; flex:1; min-width:0;">
+                                                        <div class="profile-wrapper">
+                                                            <div class="profile" style="background: ${isOnline ? '' : 'var(--text-muted)'}">${esc(profileInitial)}</div>
+                                                            <span class="online-dot" style="display: block; background: ${statusColor};"></span>
+                                                        </div>
+                                                        <div class="details">
+                                                            <h3>${esc(username)}</h3>
+                                                            <p class="status-text" style="color: ${statusColor}; font-size: 11px;">${isOnline ? 'online' : 'offline'}</p>
+                                                        </div>
                                                     </div>
-                                                    <div class="details">
-                                                        <h3>${esc(username)}</h3>
-                                                        <p class="status-text" style="color: ${statusColor}; font-size: 11px;">${isOnline ? 'online' : 'offline'}</p>
-                                                    </div>
+                                                    <button id="addBtn-${esc(email)}" onclick="sendFriendRequest('${esc(email)}', this)" class="add-friend-btn">Add Friend</button>
                                                 </div>
-                                                <button id="addBtn-${esc(email)}" onclick="sendFriendRequest('${esc(email)}', this)" class="add-friend-btn">Add Friend</button>
-                                            </div>
-                                        `;
-                                        userList.innerHTML += userHtml;
-                                    });
+                                            `;
+                                            userList.innerHTML += userHtml;
+                                        });
 
-                                    if (addedUsers === 0) {
-                                        userList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No other users available.</p>';
-                                    }
-                                });
+                                        if (addedUsers === 0) {
+                                            userList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No other users available.</p>';
+                                        }
+                                    })
+                                    .catch(() => {
+                                        // Fallback: show users without status
+                                        let addedUsers = 0;
+                                        data.forEach(user => {
+                                            let username = user.username || 'Unknown';
+                                            let email = user.useremail || 'No email';
+                                            if (email === 'No email' || email === currentUserEmail) return;
+                                            if (userMap.username && username !== 'Unknown' && username === userMap.username) return;
+                                            if (username === currentUserEmail) return;
+                                            addedUsers++;
+                                            let profileInitial = username.charAt(0).toUpperCase();
+                                            userList.innerHTML += `
+                                                <div class="user" data-email="${esc(email)}">
+                                                    <div style="display:flex; align-items:center; flex:1; min-width:0;">
+                                                        <div class="profile-wrapper">
+                                                            <div class="profile">${esc(profileInitial)}</div>
+                                                            <span class="online-dot" style="display: block; background: var(--text-muted);"></span>
+                                                        </div>
+                                                        <div class="details">
+                                                            <h3>${esc(username)}</h3>
+                                                            <p class="status-text" style="color: var(--text-muted); font-size: 11px;">offline</p>
+                                                        </div>
+                                                    </div>
+                                                    <button id="addBtn-${esc(email)}" onclick="sendFriendRequest('${esc(email)}', this)" class="add-friend-btn">Add Friend</button>
+                                                </div>
+                                            `;
+                                        });
+                                        if (addedUsers === 0) {
+                                            userList.innerHTML = '<p style="text-align:center; padding:20px; color: var(--text-secondary);">No other users available.</p>';
+                                        }
+                                    });
                             })
                             .catch(error => console.error('Error fetching users:', error));
 

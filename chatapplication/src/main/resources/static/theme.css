@@ -541,6 +541,7 @@ button:active {
     .navbar {
         padding: 0 12px;
         height: 56px;
+        padding-top: env(safe-area-inset-top, 0px);
     }
 
     .user-name {
@@ -572,6 +573,7 @@ button:active {
         min-width: 0;
         border-radius: var(--radius-md);
         border: none;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
     }
 
     .left-panel.hidden-mobile {
@@ -583,6 +585,7 @@ button:active {
         border-radius: var(--radius-md);
         display: none;
         border: none;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
     }
 
     .right-panel.visible-mobile {
@@ -634,6 +637,7 @@ button:active {
     #chatInputArea {
         padding: 8px 10px;
         gap: 6px;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     }
 
     #chatInputArea button {
@@ -670,6 +674,12 @@ button:active {
         padding: 5px 12px;
         font-size: 11px;
     }
+
+    /* Connection status bar on mobile */
+    .conn-status {
+        padding: 5px 12px;
+        font-size: 11px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -701,6 +711,11 @@ button:active {
     .app-logo {
         font-size: 30px;
     }
+
+    #chatInputArea {
+        padding: 6px 8px;
+        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    }
 }
 
 /* Back button */
@@ -719,6 +734,43 @@ button:active {
 .back-to-contacts:hover {
     background: var(--primary-light);
     transform: none;
+}
+
+/* Connection Status Bar */
+.conn-status {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 99999;
+    padding: 6px 16px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    animation: slideDown 0.3s ease;
+}
+.conn-status.connecting {
+    background: var(--warning);
+    color: #2d3436;
+}
+.conn-status.reconnecting {
+    background: #fdcb6e;
+    color: #2d3436;
+}
+.conn-status.failed {
+    background: var(--danger);
+    color: #fff;
+    cursor: pointer;
+}
+@keyframes slideDown {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+}
+
+/* Touch action for swipe gestures */
+.chat-msg {
+    touch-action: pan-y;
 }
 
 /* Typing indicator */

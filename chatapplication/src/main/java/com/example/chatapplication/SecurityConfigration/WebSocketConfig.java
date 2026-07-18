@@ -18,7 +18,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
-        taskScheduler.setPoolSize(2);
+        taskScheduler.setPoolSize(4);
         taskScheduler.setThreadNamePrefix("ws-heartbeat-");
         taskScheduler.initialize();
 

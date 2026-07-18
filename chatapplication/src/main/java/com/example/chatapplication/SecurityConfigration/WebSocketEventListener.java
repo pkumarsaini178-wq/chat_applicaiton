@@ -89,9 +89,9 @@ public class WebSocketEventListener {
         }
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRate = 10000)
     public void processPendingOffline() {
-        Instant cutoff = Instant.now().minusSeconds(15);
+        Instant cutoff = Instant.now().minusSeconds(10);
         Set<String> toOffline = new HashSet<>();
         for (Map.Entry<String, Instant> entry : pendingOffline.entrySet()) {
             if (entry.getValue().isBefore(cutoff)) {
