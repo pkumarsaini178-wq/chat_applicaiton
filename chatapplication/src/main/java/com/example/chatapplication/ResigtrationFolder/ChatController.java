@@ -75,10 +75,15 @@ public class ChatController {
                 // Create cookie to store the JWT token for 1 week
                 Cookie cookie = new Cookie("jwt", token);
                 cookie.setHttpOnly(true); // secure against XSS
-                cookie.setPath("/"); // available across the entire application
+                cookie.setSecure(true);   // only sent over HTTPS
+                cookie.setPath("/");      // available across the entire application
                 cookie.setMaxAge(7 * 24 * 60 * 60); // 1 week expiry in seconds
-
-                response.addCookie(cookie);
+                // Set SameSite=None via Set-Cookie header for cross-origin support
+                String setCookieHeader = cookie.getName() + "=" + cookie.getValue()
+                        + "; Path=" + cookie.getPath()
+                        + "; Max-Age=" + cookie.getMaxAge()
+                        + "; HttpOnly; Secure; SameSite=None";
+                response.addHeader("Set-Cookie", setCookieHeader);
 
                 return new RedirectView("/homepage.html");
             }
@@ -461,11 +466,8 @@ public class ChatController {
 
     @PostMapping("/logout")
     public org.springframework.http.ResponseEntity<Void> logoutUser(HttpServletResponse response) {
-        Cookie cookie = new Cookie("jwt", "");
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
+        String clearCookieHeader = "jwt=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None";
+        response.addHeader("Set-Cookie", clearCookieHeader);
         return org.springframework.http.ResponseEntity.ok().build();
     }
 

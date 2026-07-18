@@ -56,4 +56,18 @@ public class JwtUntil {
         }
     }
 
+    public long getTokenAge(String token) {
+        try {
+            var claims = Jwts.parserBuilder()
+                    .setSigningKey(getsigineky())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+            Date issuedAt = claims.getIssuedAt();
+            return System.currentTimeMillis() - issuedAt.getTime();
+        } catch (JwtException | IllegalArgumentException e) {
+            return Long.MAX_VALUE;
+        }
+    }
+
 }

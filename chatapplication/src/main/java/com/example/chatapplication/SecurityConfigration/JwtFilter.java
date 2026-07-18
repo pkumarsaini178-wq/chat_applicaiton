@@ -21,6 +21,10 @@ public class JwtFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUntil jwtUntil;
 
+    // Refresh token if older than 6 days (within the 7-day window)
+    private static final long REFRESH_THRESHOLD_MS = 6 * 24 * 60 * 60 * 1000L;
+    private static final long ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000L;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -49,15 +53,24 @@ public class JwtFilter extends OncePerRequestFilter {
                                                         UsernamePasswordAuthenticationToken auth=new UsernamePasswordAuthenticationToken( email,null,new ArrayList<>());
                                                         auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                                                         SecurityContextHolder.getContext().setAuthentication(auth);
-                                                    }  
+                                                    }
+
+                                                // Sliding-window token refresh: if token is older than 6 days, issue a fresh one
+                                                long tokenAge = jwtUntil.getTokenAge(token);
+                                                if (tokenAge > REFRESH_THRESHOLD_MS) {
+                                                    String newToken = jwtUntil.gunrateToken(email);
+                                                    String setCookieHeader = "jwt=" + newToken
+                                                            + "; Path=/"
+                                                            + "; Max-Age=" + (ONE_WEEK_MS / 1000)
+                                                            + "; HttpOnly; Secure; SameSite=None";
+                                                    response.addHeader("Set-Cookie", setCookieHeader);
+                                                }
                                             }
                                             else
                                             {
                                                 // Clear invalid cookie to prevent console flooding
-                                                Cookie cookie = new Cookie("jwt", "");
-                                                cookie.setPath("/");
-                                                cookie.setMaxAge(0);
-                                                response.addCookie(cookie);
+                                                String clearCookieHeader = "jwt=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None";
+                                                response.addHeader("Set-Cookie", clearCookieHeader);
                                             }
                                         }
                                         chain.doFilter(request, response);

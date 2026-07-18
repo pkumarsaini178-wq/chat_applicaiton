@@ -223,6 +223,48 @@
                 display: none;
             }
         }
+        /* Fullscreen Image Viewer Modal Styles */
+        .image-viewer-modal {
+            display: none;
+            position: fixed;
+            z-index: 20000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .image-viewer-modal.show {
+            opacity: 1;
+        }
+        .image-viewer-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: var(--radius-sm);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: zoom-out;
+        }
+        .image-viewer-modal.show img {
+            transform: scale(1);
+        }
+        .chat-msg img {
+            cursor: pointer;
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .chat-msg img:hover {
+            transform: scale(1.02);
+            box-shadow: var(--card-shadow);
+        }
         .chat-msg {
             cursor: pointer;
             position: relative;
@@ -231,7 +273,35 @@
             from { opacity: 0; transform: scale(0.95) translateY(4px); }
             to { opacity: 1; transform: scale(1) translateY(0); }
         }
+        .msg-menu-trigger {
+            display: none;
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            font-size: 16px;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            line-height: 1;
+            z-index: 10;
+            transition: background 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        .msg-menu-trigger:hover {
+            background: var(--bg-color);
+        }
+        @media (max-width: 768px) {
+            .msg-menu-trigger {
+                display: block;
+            }
+            .chat-msg {
+                cursor: default;
+            }
+        }
     </style>
+
 
 </head>
 
@@ -345,20 +415,17 @@
                 <div class="emoji-grid" id="emojiGrid"></div>
             </div>
 
-            <div id="chatInputArea" style="display:none; flex-direction:column; gap:8px; padding: 10px 14px;">
+            <div id="chatInputArea" style="display:none; flex-direction:row; align-items:center; gap:8px; padding: 10px 14px;">
+                <button onclick="toggleEmojiPicker()" class="media-btn" id="emojiBtn" title="Emojis">😀</button>
+                <input type="file" id="mediaInput" accept="image/*,audio/*,video/*" style="display:none;"
+                    onchange="handleMediaUpload(event)">
+                <button onclick="document.getElementById('mediaInput').click()" class="media-btn" title="Attach file">&#128206;</button>
+                
                 <textarea id="chatMessage" placeholder="Type a message..."
-                    onkeydown="handleKeyDown(event)" oninput="handleTypingInput()" autocomplete="off" enterkeyhint="send" rows="1"></textarea>
+                    onkeydown="handleKeyDown(event)" oninput="handleTypingInput()" autocomplete="off" enterkeyhint="send" rows="1" style="flex:1; width:0; min-width:0;"></textarea>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <button onclick="toggleEmojiPicker()" class="media-btn" id="emojiBtn" title="Emojis">😀</button>
-                        <input type="file" id="mediaInput" accept="image/*,audio/*,video/*" style="display:none;"
-                            onchange="handleMediaUpload(event)">
-                        <button onclick="document.getElementById('mediaInput').click()" class="media-btn" title="Attach file">&#128206;</button>
-                        <button onclick="startAudioRecording()" id="micBtn" class="media-btn" title="Voice message">&#127908;</button>
-                    </div>
-                    <button onclick="sendMessage()" id="sendBtn" style="width:auto; padding:8px 20px; background: var(--primary); color: white; border: none; border-radius: 20px; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap;">Send</button>
-                </div>
+                <button onclick="startAudioRecording()" id="micBtn" class="media-btn" title="Voice message">&#127908;</button>
+                <button onclick="sendMessage()" id="sendBtn" style="width:auto; padding:8px 20px; background: var(--primary); color: white; border: none; border-radius: 20px; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap;">Send</button>
             </div>
         </div>
     </div>
@@ -515,17 +582,6 @@
             });
         }
 
-        // Close emoji picker on click outside
-        document.addEventListener('click', function(e) {
-            let picker = document.getElementById('emojiPicker');
-            let btn = document.getElementById('emojiBtn');
-            if (picker && picker.style.display === 'flex') {
-                if (!picker.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
-                    picker.style.display = 'none';
-                }
-            }
-        });
-
         function insertEmoji(emoji) {
             let textarea = document.getElementById('chatMessage');
             let startPos = textarea.selectionStart;
@@ -540,6 +596,17 @@
             autoResizeTextarea();
             handleTypingInput();
         }
+
+        // Close emoji picker on click outside
+        document.addEventListener('click', function(e) {
+            let picker = document.getElementById('emojiPicker');
+            let btn = document.getElementById('emojiBtn');
+            if (picker && picker.style.display === 'flex') {
+                if (!picker.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    picker.style.display = 'none';
+                }
+            }
+        });
 
         function handleTypingInput() {
             autoResizeTextarea();
@@ -1210,7 +1277,7 @@
 
             let mediaContent = '';
             if (msg.messageType === 'IMAGE' && msg.mediaData) {
-                mediaContent = `<img src="${msg.mediaData}" onerror="this.onerror=null; this.src=''; this.alt='[Image missing]';" style="max-width:280px; max-height:300px; object-fit:contain; border-radius:8px; margin-top:6px;"/>`;
+                mediaContent = `<img src="${msg.mediaData}" onerror="this.onerror=null; this.src=''; this.alt='[Image missing]';" ondblclick="openFullScreenImage(this.src)" style="max-width:280px; max-height:300px; object-fit:contain; border-radius:8px; margin-top:6px;"/>`;
             } else if (msg.messageType === 'AUDIO' && msg.mediaData) {
                 mediaContent = `<audio controls src="${msg.mediaData}" onerror="this.onerror=null; this.parentElement.innerHTML += '<br><small style=\\'color:var(--danger)\\'>[Audio missing]</small>';" style="max-width:250px; margin-top:6px;"></audio>`;
             } else if (msg.messageType === 'VIDEO' && msg.mediaData) {
@@ -1258,6 +1325,7 @@
                         ${tickHtml}
                     </div>
                     ${mediaContent}
+                    <span class="msg-menu-trigger" onclick="openMsgMenu(event, '${msg.id}', ${isMe}, this.closest('.chat-msg'))">&#8942;</span>
                 </div>
             `;
 
@@ -1325,7 +1393,7 @@
 
             let mediaContent = '';
             if (msg.messageType === 'IMAGE' && msg.mediaData) {
-                mediaContent = '<img src="' + msg.mediaData + '" onerror="this.onerror=null; this.src=\'\'; this.alt=\'[Image missing]\';" style="max-width:280px; max-height:300px; object-fit:contain; border-radius:8px; margin-top:6px;"/>';
+                mediaContent = '<img src="' + msg.mediaData + '" onerror="this.onerror=null; this.src=\'\'; this.alt=\'[Image missing]\';" ondblclick="openFullScreenImage(this.src)" style="max-width:280px; max-height:300px; object-fit:contain; border-radius:8px; margin-top:6px;"/>';
             } else if (msg.messageType === 'AUDIO' && msg.mediaData) {
                 mediaContent = '<audio controls src="' + msg.mediaData + '" style="max-width:250px; margin-top:6px;"></audio>';
             } else if (msg.messageType === 'VIDEO' && msg.mediaData) {
@@ -1358,6 +1426,7 @@
                 quoteHtml +
                 '<div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px; text-align:left; width:100%;"><span class="msg-text">' + esc(msg.message || '') + '</span>' + editedHtml + tickHtml + '</div>' +
                 mediaContent +
+                '<span class="msg-menu-trigger" onclick="openMsgMenu(event, \'' + msg.id + '\', ' + isMe + ', this.closest(\'.chat-msg\'))">&#8942;</span>' +
                 '</div>';
         }
 
@@ -1478,7 +1547,7 @@
             if (!msgEl) return;
 
             let ignoreTags = ['IMG', 'AUDIO', 'VIDEO', 'A', 'BUTTON'];
-            let isMediaOrLink = ignoreTags.includes(e.target.tagName) || e.target.closest('.quoted-msg') || e.target.closest('button');
+            let isMediaOrLink = ignoreTags.includes(e.target.tagName) || e.target.closest('.quoted-msg') || e.target.closest('button') || e.target.closest('.msg-menu-trigger');
             if (isMediaOrLink) return;
 
             let msgId = msgEl.getAttribute('data-message-id');
@@ -1499,6 +1568,7 @@
             let now = Date.now();
             if (now - lastMenuOpenTime < 100) return; // Prevent double-trigger
             lastMenuOpenTime = now;
+            menuOpenTimestamp = now;
 
             let existing = document.getElementById('msgContextMenu');
             if (existing) existing.remove();
@@ -1599,7 +1669,8 @@
             let btn = document.createElement('button');
             btn.style.cssText = 'background:none; border:none; padding:8px 12px; color:var(--text-main); font-size:13px; font-weight:500; text-align:left; cursor:pointer; width:100%; border-radius:6px; box-shadow:none; transition: background 0.15s ease, color 0.15s ease;';
             btn.innerText = text;
-            btn.onclick = function() {
+            btn.onclick = function(e) {
+                e.stopPropagation();
                 onClick();
                 let m = document.getElementById('msgContextMenu');
                 if (m) m.remove();
@@ -1609,8 +1680,22 @@
             return btn;
         }
 
+        // Track when menu was last opened to prevent immediate dismiss
+        let menuOpenTimestamp = 0;
+
+        function openMsgMenu(event, msgId, isMe, msgEl) {
+            event.stopPropagation();
+            if (!msgId || msgId === '-1' || msgId.startsWith('send_')) return;
+            let msgTextEl = msgEl.querySelector('.msg-text');
+            let msgText = msgTextEl ? msgEl.querySelector('.msg-text').innerText : '';
+            let senderNameEl = msgEl.querySelector('.chat-time');
+            let senderName = senderNameEl ? senderNameEl.innerText.split(' - ')[0] : 'Unknown';
+            showContextMenu(msgId, isMe, msgText, senderName, event);
+        }
+
         // Close context menu on clicking elsewhere
         document.addEventListener('click', function(e) {
+            if (Date.now() - menuOpenTimestamp < 300) return; // Prevent immediate dismiss
             let menu = document.getElementById('msgContextMenu');
             if (menu && !menu.contains(e.target)) {
                 menu.remove();
@@ -1710,11 +1795,11 @@
                 }
 
                 startReply(msgId, senderName, msgText);
-            } else if (isTouch && !isSwiping && distance < 12 && timeElapsed < 300) {
+            } else if (isTouch && !isSwiping && distance < 12 && timeElapsed < 500) {
                 // This is a direct touch tap on mobile
                 let target = clickStartTarget || e.target;
                 let ignoreTags = ['IMG', 'AUDIO', 'VIDEO', 'A', 'BUTTON'];
-                let isMediaOrLink = ignoreTags.includes(target.tagName) || target.closest('.quoted-msg') || target.closest('button');
+                let isMediaOrLink = ignoreTags.includes(target.tagName) || target.closest('.quoted-msg') || target.closest('button') || target.closest('.msg-menu-trigger');
                 
                 if (!isMediaOrLink) {
                     let msgId = swipeTarget.getAttribute('data-message-id');
@@ -2135,6 +2220,41 @@
             });
         }
 
+        function openFullScreenImage(src) {
+            const modal = document.getElementById('imageViewerModal');
+            const img = document.getElementById('fullScreenImage');
+            if (!modal || !img) return;
+
+            img.src = src;
+            modal.style.display = 'flex';
+            
+            // Force reflow to trigger opacity transition
+            modal.offsetHeight;
+            
+            modal.classList.add('show');
+        }
+
+        function closeImageViewer() {
+            const modal = document.getElementById('imageViewerModal');
+            if (!modal) return;
+
+            modal.classList.remove('show');
+            setTimeout(() => {
+                if (!modal.classList.contains('show')) {
+                    modal.style.display = 'none';
+                    document.getElementById('fullScreenImage').src = '';
+                }
+            }, 300);
+        }
+
+        // Global keydown listener for Escape key to close modals
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeImageViewer();
+                closeProfileModal();
+            }
+        });
+
     </script>
 
     <!-- Profile Modal Overlay -->
@@ -2159,6 +2279,11 @@
                 <button onclick="logoutUser()" style="width: 100%; background: var(--danger-light); color: var(--danger); border: none;">Logout</button>
             </div>
         </div>
+    </div>
+    <!-- Fullscreen Image Viewer Modal -->
+    <div id="imageViewerModal" class="image-viewer-modal" onclick="closeImageViewer()">
+        <button onclick="closeImageViewer()" style="position: absolute; right: 24px; top: 24px; background: rgba(255, 255, 255, 0.15); border: none; font-size: 24px; color: white; cursor: pointer; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background 0.25s, transform 0.25s; z-index: 20001;" onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='scale(1.05)';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='scale(1)';">&times;</button>
+        <img id="fullScreenImage" src="" alt="Fullscreen Image" onclick="event.stopPropagation();"/>
     </div>
 
 </body>
