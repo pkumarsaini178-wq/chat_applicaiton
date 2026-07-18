@@ -1491,6 +1491,7 @@
             let senderNameEl = msgEl.querySelector('.chat-time');
             let senderName = senderNameEl ? senderNameEl.innerText.split(' - ')[0] : 'Unknown';
 
+            e.stopPropagation(); // Stop propagation immediately so the document click listener doesn't dismiss the menu
             showContextMenu(msgId, isMe, msgText, senderName, e);
         });
 
@@ -1692,6 +1693,8 @@
             let distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
             let timeElapsed = Date.now() - clickStartTime;
 
+            let isTouch = e.type === 'touchend';
+
             if (isSwiping && diffX > 60) {
                 let msgId = swipeTarget.getAttribute('data-message-id');
                 let msgText = swipeTarget.getAttribute('data-message-text') || '';
@@ -1707,8 +1710,8 @@
                 }
 
                 startReply(msgId, senderName, msgText);
-            } else if (!isSwiping && distance < 8 && timeElapsed < 300) {
-                // This is a direct click/tap on the message
+            } else if (isTouch && !isSwiping && distance < 12 && timeElapsed < 300) {
+                // This is a direct touch tap on mobile
                 let target = clickStartTarget || e.target;
                 let ignoreTags = ['IMG', 'AUDIO', 'VIDEO', 'A', 'BUTTON'];
                 let isMediaOrLink = ignoreTags.includes(target.tagName) || target.closest('.quoted-msg') || target.closest('button');
@@ -1728,6 +1731,7 @@
                         preventDefault: function() {}
                     };
                     showContextMenu(msgId, isMe, msgText, senderName, fakeEvent);
+                    if (e.cancelable) e.preventDefault(); // Prevents synthetic click on mobile!
                 }
             }
 

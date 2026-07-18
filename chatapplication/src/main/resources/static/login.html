@@ -58,6 +58,21 @@
     </div>
 
     <script>
+        // Check if user is already logged in
+        fetch('/api/current-user')
+            .then(res => {
+                if (res.ok) return res.json();
+                throw new Error('Not authenticated');
+            })
+            .then(userMap => {
+                if (userMap.email) {
+                    window.location.href = '/homepage.html';
+                }
+            })
+            .catch(err => {
+                console.log('Not logged in:', err.message);
+            });
+
         const params = new URLSearchParams(window.location.search);
         const error = params.get("error");
         const success = params.get("success");
