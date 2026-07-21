@@ -21,7 +21,16 @@ public class JwtUntil {
     private Long expiry;
 
     private Key getsigineky() {
-        return Keys.hmacShaKeyFor(secrectKey.getBytes());
+        byte[] keyBytes = secrectKey.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (keyBytes.length < 32) {
+            byte[] paddedKey = new byte[32];
+            System.arraycopy(keyBytes, 0, paddedKey, 0, keyBytes.length);
+            for (int i = keyBytes.length; i < 32; i++) {
+                paddedKey[i] = (byte) (i * 31);
+            }
+            return Keys.hmacShaKeyFor(paddedKey);
+        }
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
     public String gunrateToken(String email) {
